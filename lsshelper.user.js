@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.13.0
+// @version      0.14.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -49,7 +49,7 @@
         openTab: 'AAO-Tab automatisch öffnen',
         createButton: 'Button „AAO anlegen“ anzeigen',
         auditButton: 'Button „AAOs prüfen“ anzeigen',
-        crewButton: 'Button „Besatzung anpassen“ auf Wachen anzeigen',
+        crewButton: 'Knöpfe für das Wachen-Dashboard anzeigen',
         pulse: 'Markierung pulsieren lassen',
         colorName: 'Farbe Namens-Treffer',
         colorVehicles: 'Farbe Fahrzeug-AAOs',
@@ -573,7 +573,15 @@
             .lsshelper-name, .lsshelper-req { position: relative; z-index: 5; box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--lsshelper-color), 0 0 0 7px #000; ${settings.pulse ? 'animation: lsshelper-pulse 1s ease-in-out infinite alternate;' : ''} }
             .lsshelper-name { --lsshelper-color: ${settings.colorName}; }
             .lsshelper-req { --lsshelper-color: ${settings.colorVehicles}; }
-            #lsshelper-crew { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
+            #lsshelper-dash { position: fixed; top: 5%; left: 10%; width: 80%; max-height: 90%; overflow-y: auto; z-index: 100000; background: #fff; color: #000; border: 2px solid #000; border-radius: 6px; padding: 12px; font-size: 12px; box-shadow: 0 0 30px rgba(0, 0, 0, 0.6); }
+            #lsshelper-dash h4 { margin: 0 0 6px; color: #000; }
+            .lsshelper-dash-toolbar { margin: 6px 0; }
+            .lsshelper-dash-group { margin-top: 10px; padding-top: 6px; border-top: 1px solid #999; }
+            .lsshelper-dash-station { margin-top: 6px; font-weight: bold; }
+            .lsshelper-dash-row { display: block; font-weight: normal; margin: 0 0 0 10px; color: #000; }
+            .lsshelper-dash-done { color: #2e7d32; text-decoration: line-through; }
+            .lsshelper-dash-failed { color: #c62828; }
+            .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
             #lsshelper-settings input[type="number"] { width: 60px; color: #000; }
@@ -1171,273 +1179,399 @@
     }
 
     /* ------------------------------------------------------------------ *
-     * Feature: Besatzung einer Wache an das vorhandene Personal anpassen (/buildings/ID)
+     * Feature: Wachen-Dashboard – Sitzlimits, Lehrgangspersonal und Namen für alle Wachen
      * ------------------------------------------------------------------ */
 
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Fahrzeugtyp -> benötigte Lehrgänge (Bezeichnung wie in der Personalliste).
-    // ALL = die ganze Besatzung braucht den Lehrgang, Zahl = so viele Plätze brauchen ihn.
-    const ALL = 'all';
-    const TRAINING = {};
-    const training = (types, ...required) => types.forEach(type => (TRAINING[type] = required));
-    training([12], ['GW-Messtechnik', ALL]);
-    training([27, 77], ['GW-Gefahrgut', ALL]);
-    training([29, 31], ['Notarzt', ALL]);
-    training([73, 74, 149], ['Notarzt', 1]);
-    training([33], ['GW-Höhenrettung', ALL]);
-    training([34, 78], ['ELW 2', ALL]);
-    training([35], ['Zugführer (leBefKw)', ALL]);
-    training([40], ['Zugtrupp', ALL]);
-    training([42, 45], ['Fachgruppe Räumen', ALL]);
-    training([46], ['Wechsellader', ALL]);
-    training([51], ['Hundertschaftsführer (FüKw)', ALL]);
-    training([54], ['Dekon-P', ALL]);
-    training([55], ['LNA', ALL]);
-    training([56], ['OrgL', ALL]);
-    training([57], ['Feuerwehrkran', ALL]);
-    training([59], ['Einsatzleitung (SEG)', ALL]);
-    training([60], ['GW-San', ALL]);
-    training([61], ['Polizeihubschrauber', ALL]);
-    training([63, 69], ['GW-Taucher', ALL]);
-    training([64, 66, 67, 68, 70, 71], ['GW-Wasserrettung', ALL]);
-    training([72], ['Wasserwerfer', ALL]);
-    training([75], ['Flugfeldlöschfahrzeug', ALL]);
-    training([76], ['Rettungstreppe', ALL]);
-    training([79, 80], ['SEK', ALL]);
-    training([81, 82], ['MEK', ALL]);
-    training([83, 84, 85, 86], ['Werkfeuerwehr', ALL]);
-    training([91, 153], ['Rettungshundeführer', ALL]);
-    training([92], ['Rettungshundeführer (THW)', ALL]);
-    training([94], ['Hundeführer (Schutzhund)', ALL]);
-    training([95], ['Motorradstaffel', ALL]);
-    training([96], ['Brandbekämpfung', ALL]);
-    training([97], ['Intensivpflege', 2], ['Notarzt', 1]);
-    training([98], ['Kriminalpolizist', ALL]);
-    training([100], ['Fachgruppe Wasserschaden/Pumpen', ALL]);
-    training([101, 102], ['Fachgruppe Wasserschaden/Pumpen', 1]);
-    training([103], ['Dienstgruppenleitung', 1]);
-    training([109], ['FGr SB', ALL]);
-    training([112], ['FGr E', 1]);
-    training([113, 180], ['NEA200', 1]);
-    training([125], ['Tr UL', ALL]);
-    training([126], ['Drohnen-Schulung', 4]);
-    training([127], ['Drohnenoperator', ALL]);
-    training([128], ['Drohnen-Schulung', ALL]);
-    training([129], ['Drohnen-Schulung', ALL], ['ELW 2', ALL]);
-    training([130, 133], ['Betreuungshelfer', 1], ['Verpflegungshelfer', 2]);
-    training([131], ['Betreuungshelfer', ALL]);
-    training([134], ['Reiterstaffel', 2]);
-    training([138, 139], ['Feuerwehr-Verpflegungseinheit', 1], ['Verpflegungshelfer', 2]);
-    training([140], ['Feuerwehr-Verpflegungseinheit', ALL]);
-    training([144, 145, 147, 148], ['Fachzug Führung und Kommunikation', ALL]);
-    training([151], ['EL Bergrettung', ALL]);
-    training([156], ['Polizeihubschrauber', 1], ['Windenoperator', 1]);
-    training([157], ['Windenoperator', 1], ['Notarzt', 1]);
-    training([158], ['Höhenretter', ALL]);
-    training([159], ['Seenotretter', ALL]);
-    training([161], ['Hubschrauberpilot (Seenotrettung)', 1], ['Windenoperator', 1], ['Notfallsanitäter mit Wasserrettungsausbildung', 1]);
-    training([162, 163], ['Bahnrettung', ALL]);
-    training([165], ['Lautsprecheroperator', ALL]);
-    training([171], ['SEG - Technik und Sicherheit', ALL]);
-    training([172, 173], ['SEG - Technik und Sicherheit', 1]);
-    training([176], ['Logistik-Verpflegung', 1], ['Verpflegungshelfer', 2]);
-    training([177], ['Logistik-Verpflegung', ALL]);
-    training([181], ['Fachgruppe Brückenbau', ALL]);
-    training([182], ['Kranführer', ALL]);
-    training([184], ['Autobahnpolizei', ALL]);
+    // Fahrzeugtyp -> Besatzung [min, max] (Index = Typ-ID)
+    const STAFF = '1-9,1-9,1-3,1-3,1-3,1-3,1-9,1-9,1-9,1-9,1-3,1-3,1-3,1-3,1-6,1-3,1-3,1-3,1-3,1-3,1-3,1-3,1-6,1-3,1-3,1-3,1-3,1-3,1-2,1-2,1-9,1-2,1-2,1-9,1-6,1-3,1-9,1-6,1-2,1-9,1-4,1-9,1-3,0-0,0-0,1-6,1-3,0-0,0-0,0-0,1-9,1-3,1-2,1-6,0-0,1-1,1-1,1-2,1-2,1-2,6-6,1-3,0-0,2-2,1-6,1-2,0-0,0-0,0-0,1-2,0-0,0-0,5-5,6-6,3-3,2-3,2-2,0-0,0-0,3-4,9-9,3-4,9-9,1-9,1-3,1-3,1-3,1-3,1-6,1-6,1-9,4-5,0-0,4-5,1-2,1-1,0-0,3-3,1-2,,1-7,0-0,0-0,1-2,1-6,1-6,1-6,1-9,0-0,1-9,0-0,0-0,0-0,0-0,1-2,0-0,0-0,0-0,1-3,0-0,1-3,1-3,1-3,1-3,1-7,4-4,4-5,4-4,4-5,4-6,3-3,1-9,0-0,3-3,2-4,2-2,0-0,1-6,3-6,3-3,6-6,0-0,0-0,0-0,1-4,1-7,0-0,1-7,4-4,3-6,3-6,1-3,1-1,4-5,1-1,0-0,1-3,1-2,4-4,4-9,1-2,3-4,1-3,1-9,0-0,5-5,1-2,1-2,0-0,0-0,0-0,1-5,2-6,1-7,0-0,0-0,3-3,5-5,0-0,0-0,0-0,6-9,1-1,0-0,2-2,2-6,0-0'
+        .split(',')
+        .map(range => (range ? range.split('-').map(Number) : null));
 
-    // Liest aus dem Bearbeiten-Formular eines Fahrzeugs das Feld "maximale Besatzung" samt erlaubtem Bereich
-    async function loadCrewForm(id) {
-        const html = await (await fetch(`/vehicles/${id}/edit`, { credentials: 'same-origin' })).text();
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const field = doc.querySelector('[name="vehicle[personal_max]"], [name*="personal_max"], [name*="max_personnel"]');
-        if (!field || !field.form) return null;
-        let values;
-        if (field.tagName === 'SELECT') values = Array.from(field.options).map(o => parseInt(o.value)).filter(v => !isNaN(v));
-        else values = [parseInt(field.getAttribute('min')), parseInt(field.getAttribute('max'))];
-        if (!values.length || values.some(isNaN)) return null;
-        return { form: field.form, field, min: Math.min(...values), max: Math.max(...values), current: parseInt(field.value) };
+    // Fahrzeugtyp -> Lehrgang -> 0 = die ganze Besatzung braucht ihn, n = so viele Plätze brauchen ihn
+    // prettier-ignore
+    const TRAINING = {12:{gw_messtechnik:0},27:{gw_gefahrgut:0},29:{notarzt:0},31:{notarzt:0},33:{gw_hoehenrettung:0},34:{elw2:0},35:{police_einsatzleiter:0},40:{thw_zugtrupp:0},42:{thw_raumen:0},45:{thw_raumen:0},46:{wechsellader:0},51:{police_fukw:0},54:{dekon_p:0},55:{lna:0},56:{orgl:0},57:{fwk:0},59:{seg_elw:0},60:{seg_gw_san:0},61:{polizeihubschrauber:0},63:{gw_taucher:0},64:{gw_wasserrettung:0},66:{gw_wasserrettung:0},67:{gw_wasserrettung:0},68:{gw_wasserrettung:0},69:{gw_taucher:0},70:{gw_wasserrettung:0},71:{gw_wasserrettung:0},72:{police_wasserwerfer:0},73:{notarzt:1},74:{notarzt:1},75:{arff:0},76:{rettungstreppe:0},77:{gw_gefahrgut:0},78:{elw2:0},79:{police_sek:0},80:{police_sek:0},81:{police_mek:0},82:{police_mek:0},83:{werkfeuerwehr:0},84:{werkfeuerwehr:0},85:{werkfeuerwehr:0},86:{werkfeuerwehr:0},91:{seg_rescue_dogs:0},92:{thw_rescue_dogs:0},94:{k9:0},95:{police_motorcycle:0},96:{police_firefighting:0},97:{intensive_care:2,notarzt:1},98:{criminal_investigation:0},100:{water_damage_pump:0},101:{water_damage_pump:1},102:{water_damage_pump:1},103:{police_service_group_leader:1},109:{heavy_rescue:0},112:{thw_energy_supply:1},113:{energy_supply:1},125:{thw_drone:0},126:{fire_drone:4},127:{seg_drone:0},128:{fire_drone:0},129:{fire_drone:0,elw2:0},130:{care_service:1,care_service_equipment:2},131:{care_service:0},133:{care_service:1,care_service_equipment:2},134:{police_horse:2},138:{fire_care_service:1,care_service_equipment:2},139:{fire_care_service:1,care_service_equipment:2},140:{fire_care_service:0},144:{thw_command:0},145:{thw_command:0},147:{thw_command:0},148:{thw_command:0},149:{notarzt:1},151:{mountain_command:0},153:{seg_rescue_dogs:0},155:{mountain_height_rescue:4},156:{polizeihubschrauber:1,police_helicopter_lift:1},157:{rescue_helicopter_lift:1,notarzt:1},158:{mountain_height_rescue:0},159:{coastal_rescue:0},161:{coastal_helicopter:1,coastal_helicopter_lift:1,emergency_paramedic_water_rescue:1},162:{railway_fire:0},163:{railway_fire:0},165:{police_speaker_operator:0},171:{disaster_response_technology:0},172:{disaster_response_technology:1},173:{disaster_response_technology:1},174:{disaster_response_technology:2},175:{disaster_response_technology:2},176:{thw_care_service:1,care_service_equipment:2},177:{thw_care_service:0},180:{energy_supply:1},181:{thw_bridge_construction:0},182:{thw_bridge_construction_crane:0},183:{thw_bridge_construction:6},184:{highway_police:0}};
+
+    // Gebäudetyp -> Kürzel im Wachennamen ("Ballrechten FW 1"); nur für Namensvorschläge neuer Wachen
+    const BUILDING_CODES = { 0: 'FW', 2: 'RW', 4: 'KH', 5: 'RTH', 6: 'PW', 18: 'FW', 19: 'PW', 20: 'RW', 25: 'BW' };
+
+    const fetchJson = async url => (await fetch(url, { credentials: 'same-origin' })).json();
+    const fetchDoc = async url => new DOMParser().parseFromString(await (await fetch(url, { credentials: 'same-origin' })).text(), 'text/html');
+
+    // "Ballrechten FW 1" -> { place: 'Ballrechten', code: 'FW', nr: '1' }; "THW Eschbach GP" -> Eschbach / THW / 1
+    function parseStation(caption) {
+        let match = caption.match(/^(.+) ([A-ZÄÖÜ]{2,4}) (\d+)$/);
+        if (match) return { place: match[1], code: match[2], nr: match[3] };
+        match = caption.match(/^THW (.+?)(?: GP)?$/);
+        if (match && !/Schule/.test(caption)) return { place: match[1], code: 'THW', nr: '1' };
+        return null;
     }
 
-    // Verteilt das Personal: erst bekommt jedes Fahrzeug seine Mindestbesatzung (in Listenreihenfolge),
-    // der Rest wird reihum verteilt, bis alle voll sind oder das Personal aufgebraucht ist.
+    // Personal einer Wache: [{ id, name, edu: Set(Lehrgangs-Schlüssel), bound: Name des gebundenen Fahrzeugs }]
+    async function loadPersonnel(buildingId) {
+        const doc = await fetchDoc(`/buildings/${buildingId}/personals`);
+        return Array.from(doc.querySelectorAll('#personal_table tbody tr'))
+            .filter(row => row.children.length > 3)
+            .map(row => {
+                let keys = [];
+                try {
+                    keys = JSON.parse(row.getAttribute('data-filterable-by') || '[]');
+                } catch (e) {
+                    /* ohne Lehrgänge weiter */
+                }
+                const box = row.querySelector('input[type="checkbox"]');
+                return { id: box ? box.value : null, name: row.children[1].textContent.trim(), edu: new Set(keys), bound: row.children[3].textContent.trim() };
+            });
+    }
+
+    // Plant Sitzlimits und Lehrgangspersonal einer Wache.
     // Fahrzeuge mit Lehrgang bekommen nur Sitze, für die es ausgebildetes Personal gibt
     // (2 Kriminalpolizisten und 2 Zivilstreifenwagen ergeben 1 + 1, nicht 2 + 2).
     function planCrew(vehicles, persons) {
-        // n freie Personen mit allen genannten Lehrgängen; wenig Ausgebildete zuerst, damit Spezialisten frei bleiben
-        const pick = (n, names, taken = []) => {
+        persons.forEach(p => (p.used = false));
+        // n freie Personen mit allen Lehrgängen: erst schon an dieses Fahrzeug Gebundene, dann Freie, dann anderswo Gebundene;
+        // wenig Ausgebildete zuerst, damit Spezialisten frei bleiben
+        const pick = (n, keys, vehicle, taken, maxRank = 2) => {
+            const rank = p => (p.bound === vehicle.caption ? 0 : p.bound ? 2 : 1);
             const pool = persons
-                .filter(p => !p.used && !taken.includes(p) && names.every(name => p.edu.has(name)))
-                .sort((a, b) => a.edu.size - b.edu.size);
+                .filter(p => !p.used && !taken.includes(p) && rank(p) <= maxRank && keys.every(key => p.edu.has(key)))
+                .sort((a, b) => rank(a) - rank(b) || a.edu.size - b.edu.size);
             return pool.length >= n ? pool.slice(0, n) : null;
         };
         vehicles.forEach(v => {
-            const required = TRAINING[v.type] || [];
-            v.all = required.filter(r => r[1] === ALL).map(r => normalize(r[0]));
-            v.partial = required.filter(r => r[1] !== ALL).map(r => [normalize(r[0]), r[1]]);
-            v.training = required.map(r => (r[1] === ALL ? r[0] : `${r[1]}× ${r[0]}`)).join(', ');
+            const required = Object.entries(TRAINING[v.type] || {});
+            v.all = required.filter(([, n]) => n === 0).map(([key]) => key);
+            v.partial = required.filter(([, n]) => n > 0);
             v.next = v.min;
             v.staffed = false;
+            v.trained = [];
         });
         // Mindestbesatzung: erst Fahrzeuge, bei denen alle ausgebildet sein müssen, dann die mit einzelnen Pflichtplätzen, dann der Rest
-        const rank = v => (v.all.length ? 0 : v.partial.length ? 1 : 2);
+        const order = v => (v.all.length ? 0 : v.partial.length ? 1 : 2);
         vehicles
-            .filter(v => v.max > 0)
-            .sort((a, b) => rank(a) - rank(b))
+            .slice()
+            .sort((a, b) => order(a) - order(b))
             .forEach(v => {
                 const crew = [];
-                const add = (n, names) => {
-                    const found = n > 0 ? pick(n, names, crew) : [];
+                const add = (n, keys) => {
+                    const found = n > 0 ? pick(n, keys, v, crew) : [];
                     if (found) crew.push(...found);
                     return !!found;
                 };
-                const ok = v.partial.every(([name, n]) => add(n, v.all.concat(name))) && add(Math.max(0, v.min - crew.length), v.all);
-                if (!ok || crew.length > v.max) return;
+                if (!v.partial.every(([key, n]) => add(n, v.all.concat(key)))) return;
+                const specialists = crew.slice();
+                if (!add(Math.max(0, v.min - crew.length), v.all) || crew.length > v.max) return;
                 crew.forEach(p => (p.used = true));
                 v.staffed = true;
                 v.next = Math.max(v.min, crew.length);
+                v.trained = v.all.length ? crew.slice() : specialists;
             });
-        // Rest reihum verteilen
-        let progress = true;
-        while (progress) {
-            progress = false;
-            vehicles.forEach(v => {
-                if (!v.staffed || v.next >= v.max) return;
-                const extra = pick(1, v.all);
-                if (!extra) return;
-                extra[0].used = true;
-                v.next++;
-                progress = true;
-            });
-        }
+        // Rest reihum verteilen: erst nur eigene und freie Leute, damit bestehende Bindungen bleiben,
+        // danach dürfen auch an andere Fahrzeuge Gebundene umziehen
+        [1, 2].forEach(maxRank => {
+            let progress = true;
+            while (progress) {
+                progress = false;
+                vehicles.forEach(v => {
+                    if (!v.staffed || v.next >= v.max) return;
+                    const extra = pick(1, v.all, v, [], maxRank);
+                    if (!extra) return;
+                    extra[0].used = true;
+                    v.next++;
+                    if (v.all.length) v.trained.push(extra[0]);
+                    progress = true;
+                });
+            }
+        });
         return persons.filter(p => !p.used).length;
     }
 
-    // Personal einer Wache mit seinen Lehrgängen: [{ edu: Set, used: false }]
-    async function loadPersonnel(buildingId) {
-        const html = await (await fetch(`/buildings/${buildingId}/personals`, { credentials: 'same-origin' })).text();
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        return Array.from(doc.querySelectorAll('#personal_table tbody tr'))
-            .filter(row => row.children.length > 2)
-            .map(row => ({ edu: new Set(row.children[2].textContent.split(',').map(normalize).filter(Boolean)), used: false }));
+    // Vorschläge nach dem Schema "Typ Ort WachenNr/lfd. Nr" für Fahrzeuge, die noch nicht so heißen
+    function planNames(stations) {
+        const suffixOf = station => ` ${station.parsed.place} ${station.parsed.nr}/`;
+        const matches = (vehicle, station) => {
+            const at = vehicle.caption.lastIndexOf(suffixOf(station));
+            return at > 0 && /^\d+$/.test(vehicle.caption.slice(at + suffixOf(station).length)) ? at : -1;
+        };
+        // Typbezeichnung aus bereits richtig benannten Fahrzeugen lernen ("LF 20 Ballrechten 1/1" -> Typ 0 = "LF 20")
+        const labels = {};
+        stations.filter(s => s.parsed).forEach(s => s.vehicles.forEach(v => {
+            const at = matches(v, s);
+            if (at > 0 && !labels[v.type]) labels[v.type] = v.caption.slice(0, at);
+        }));
+        const changes = [];
+        stations.filter(s => s.parsed).forEach(station => {
+            const highest = {};
+            station.vehicles.forEach(v => {
+                const at = matches(v, station);
+                if (at < 0) return;
+                const label = v.caption.slice(0, at);
+                highest[label] = Math.max(highest[label] || 0, parseInt(v.caption.slice(at + suffixOf(station).length)));
+            });
+            station.vehicles.forEach(v => {
+                if (matches(v, station) > 0) return;
+                // Unbenannte Fahrzeuge heißen wie ihr Typ; umgesetzte tragen noch den alten Wachenzusatz
+                const label = v.typeCaption || labels[v.type] || (/\d+\/\d+$/.test(v.caption) ? null : v.caption);
+                if (!label) return;
+                highest[label] = (highest[label] || 0) + 1;
+                changes.push({ kind: 'name', station, vehicle: v, caption: `${label}${suffixOf(station)}${highest[label]}`, text: `„${v.caption}“ → „${label}${suffixOf(station)}${highest[label]}“` });
+            });
+        });
+        return changes;
     }
 
-    async function saveCrew(vehicle) {
+    // Namensvorschlag für Wachen, die nicht ins Schema passen: Ort der nächstgelegenen Wache, nächste freie Nummer
+    function planBuildingNames(buildings) {
+        const named = buildings.filter(b => parseStation(b.caption));
+        const changes = [];
+        buildings.forEach(building => {
+            const code = BUILDING_CODES[building.building_type];
+            if (!code || parseStation(building.caption) || !named.length) return;
+            const distance = other => Math.hypot(other.latitude - building.latitude, other.longitude - building.longitude);
+            const place = parseStation(named.slice().sort((a, b) => distance(a) - distance(b))[0].caption).place;
+            const used = named.map(b => parseStation(b.caption)).filter(p => p.place === place && p.code === code).map(p => parseInt(p.nr));
+            const caption = `${place} ${code} ${Math.max(0, ...used) + 1}`;
+            changes.push({ kind: 'building', building, caption, text: `Wache „${building.caption}“ → „${caption}“ (Ort von der nächsten Wache übernommen)`, optional: true });
+        });
+        return changes;
+    }
+
+    // Sendet ein Bearbeiten-Formular des Spiels mit geänderten Feldern ab; alle anderen Felder bleiben, wie sie sind
+    async function submitEditForm(url, pickField, changes) {
+        const doc = await fetchDoc(url);
+        const form = Array.from(doc.querySelectorAll('form')).find(pickField);
+        if (!form) throw new Error('Formular nicht gefunden');
         const body = new URLSearchParams();
-        Array.from(vehicle.form.elements).forEach(el => {
+        Array.from(form.elements).forEach(el => {
             if (!el.name || el.disabled || ['submit', 'button', 'file', 'reset'].includes(el.type)) return;
             if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
-            body.append(el.name, el === vehicle.field ? String(vehicle.next) : el.value);
+            let value = el.value;
+            if (Object.prototype.hasOwnProperty.call(changes, el.name)) {
+                value = String(changes[el.name]);
+                if (el.tagName === 'SELECT' && !Array.from(el.options).some(o => o.value === value)) throw new Error(`Wert ${value} ist nicht erlaubt`);
+            }
+            body.append(el.name, value);
         });
-        const response = await fetch(vehicle.form.getAttribute('action') || `/vehicles/${vehicle.id}`, { method: 'POST', body, credentials: 'same-origin' });
+        const response = await fetch(form.getAttribute('action'), { method: 'POST', body, credentials: 'same-origin' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
     }
 
-    function crewBalance() {
+    const APPLY = {
+        limit: change => submitEditForm(`/vehicles/${change.vehicle.id}/edit`, f => f.querySelector('[name="vehicle[personal_max]"]'), { 'vehicle[personal_max]': change.vehicle.next }),
+        name: change => submitEditForm(`/vehicles/${change.vehicle.id}/edit`, f => f.querySelector('[name="vehicle[caption]"]'), { 'vehicle[caption]': change.caption }),
+        building: async change => {
+            const isName = el => el.type === 'text' && /^building\[/.test(el.name) && el.value === change.building.caption;
+            const doc = await fetchDoc(`/buildings/${change.building.id}/edit`);
+            const field = Array.from(doc.querySelectorAll('form input')).find(isName);
+            if (!field) throw new Error('Namensfeld nicht gefunden');
+            return submitEditForm(`/buildings/${change.building.id}/edit`, f => Array.from(f.elements).some(isName), { [field.name]: change.caption });
+        },
+        // Zuweisen und Lösen ist im Spiel derselbe Umschalter – deshalb vorher den aktuellen Stand prüfen
+        assign: change => toggleBinding(change, true),
+        unbind: change => toggleBinding(change, false),
+    };
+
+    async function toggleBinding(change, shouldBeBound) {
+        const doc = await fetchDoc(`/vehicles/${change.vehicle.id}/zuweisung`);
+        const button = doc.querySelector(`#personal_${change.person.id} a.btn`);
+        if (!button) throw new Error('Person nicht in der Zuweisungsliste');
+        if (button.classList.contains('btn-assigned') === shouldBeBound) return;
+        const token = document.querySelector('meta[name="csrf-token"]');
+        const response = await fetch(button.getAttribute('href'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': token ? token.content : '', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    }
+
+    // Liest alle Wachen und berechnet die Vorschläge: [{ kind, station, text, ... }]
+    async function planFleet(onlyBuildingId, onProgress) {
+        const [buildings, allVehicles] = await Promise.all([fetchJson('/api/buildings'), fetchJson('/api/vehicles')]);
+        const stations = buildings
+            .map(building => ({
+                building,
+                parsed: parseStation(building.caption),
+                vehicles: allVehicles
+                    .filter(v => v.building_id === building.id)
+                    .map(v => {
+                        const staff = STAFF[v.vehicle_type] || [0, 0];
+                        return { id: v.id, caption: v.caption, type: v.vehicle_type, typeCaption: v.vehicle_type_caption, min: staff[0], max: staff[1], current: v.max_personnel_override === null ? staff[1] : v.max_personnel_override };
+                    }),
+            }))
+            .filter(s => s.vehicles.length && (!onlyBuildingId || String(s.building.id) === String(onlyBuildingId)));
+
+        const changes = [];
+        for (const [index, station] of stations.entries()) {
+            onProgress(`Lese Personal … ${index + 1}/${stations.length} (${station.building.caption})`);
+            const persons = await loadPersonnel(station.building.id).catch(() => []);
+            const crewed = station.vehicles.filter(v => v.max > 0);
+            station.personnel = persons.length;
+            station.seats = crewed.reduce((sum, v) => sum + v.max, 0);
+            if (!persons.length) {
+                station.note = station.building.personal_count ? 'Personalliste nicht lesbar – übersprungen' : 'kein Personal';
+                continue;
+            }
+            station.left = planCrew(crewed, persons);
+            const duplicate = caption => station.vehicles.filter(v => v.caption === caption).length > 1;
+            crewed.forEach(v => {
+                const needs = v.all.length || v.partial.length;
+                if (v.staffed && v.next !== v.current) {
+                    changes.push({ kind: 'limit', station, vehicle: v, text: `${v.caption}: Sitzlimit ${v.current} → ${v.next}` });
+                }
+                if (needs && !v.staffed) {
+                    changes.push({ kind: 'info', station, text: `✗ ${v.caption}: zu wenig Personal mit Lehrgang (${v.all.concat(v.partial.map(p => p[0])).join(', ')})` });
+                }
+                // Gleichnamige Fahrzeuge lassen sich in der Personalliste nicht unterscheiden
+                if (!needs || !v.staffed || duplicate(v.caption)) return;
+                const bound = persons.filter(p => p.bound === v.caption);
+                v.trained.filter(p => !bound.includes(p) && p.id).forEach(person => {
+                    changes.push({ kind: 'assign', station, vehicle: v, person, text: `${person.name} → ${v.caption}${person.bound ? ` (bisher ${person.bound})` : ''}` });
+                });
+                if (v.all.length) {
+                    bound.filter(p => !v.trained.includes(p) && p.id).forEach(person => {
+                        changes.push({ kind: 'unbind', station, vehicle: v, person, text: `${person.name} von ${v.caption} lösen (${v.all.every(key => person.edu.has(key)) ? 'wird woanders gebraucht' : 'Lehrgang fehlt'})` });
+                    });
+                }
+            });
+            await sleep(100);
+        }
+        if (!onlyBuildingId) changes.push(...planBuildingNames(buildings));
+        changes.push(...planNames(stations));
+        return { stations, changes };
+    }
+
+    const DASH_GROUPS = [
+        { title: 'Sitzlimits', kinds: ['limit'], button: 'Sitzlimits übernehmen' },
+        { title: 'Lehrgangspersonal', kinds: ['assign', 'unbind'], button: 'Lehrgangspersonal zuweisen' },
+        { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
+    ];
+
+    async function openDashboard(onlyBuildingId) {
+        addStyles();
+        const old = document.getElementById('lsshelper-dash');
+        if (old) old.remove();
+        const el = (tag, cls, text) => {
+            const node = document.createElement(tag);
+            if (cls) node.className = cls;
+            if (text) node.textContent = text;
+            return node;
+        };
+        const dash = el('div');
+        dash.id = 'lsshelper-dash';
+        const close = el('a', 'btn btn-xs btn-danger pull-right', '✕');
+        close.href = '#';
+        close.addEventListener('click', e => {
+            e.preventDefault();
+            dash.remove();
+        });
+        const status = el('div', 'lsshelper-dash-status', 'Lese Wachen und Fahrzeuge …');
+        const toolbar = el('div', 'lsshelper-dash-toolbar');
+        const body = el('div');
+        dash.append(close, el('h4', '', 'LSS Helper – Wachen-Dashboard'), status, toolbar, body);
+        document.body.append(dash);
+
+        let plan;
+        try {
+            plan = await planFleet(onlyBuildingId, text => (status.textContent = text));
+        } catch (err) {
+            console.error('[LSS Helper] dashboard', err);
+            status.textContent = `Fehler: ${err.message}`;
+            return;
+        }
+        const actionable = plan.changes.filter(c => c.kind !== 'info');
+        status.textContent = `${plan.stations.length} Wachen geprüft · ${actionable.length} Vorschläge. Nichts wird geändert, bevor du einen der Knöpfe drückst.`;
+
+        // Vorschau: pro Gruppe die Vorschläge je Wache, jeder einzeln abwählbar
+        DASH_GROUPS.forEach(group => {
+            const items = plan.changes.filter(c => group.kinds.includes(c.kind));
+            const section = el('div', 'lsshelper-dash-group');
+            section.append(el('b', '', `${group.title} (${items.length})`));
+            if (!items.length) section.append(el('div', '', 'Alles in Ordnung.'));
+            const byStation = new Map();
+            items.forEach(c => {
+                const key = c.station ? c.station.building.caption : 'Wachen';
+                byStation.set(key, (byStation.get(key) || []).concat(c));
+            });
+            byStation.forEach((list, caption) => {
+                const station = list[0].station;
+                section.append(el('div', 'lsshelper-dash-station', station ? `${caption} – Personal ${station.personnel}, Sitzplätze ${station.seats}` : caption));
+                list.forEach(change => {
+                    const row = el('label', 'lsshelper-dash-row');
+                    change.box = el('input');
+                    change.box.type = 'checkbox';
+                    change.box.checked = !change.optional;
+                    row.append(change.box, ` ${change.text}`);
+                    change.row = row;
+                    section.append(row);
+                });
+            });
+            body.append(section);
+
+            if (!items.length) return;
+            const apply = el('a', 'btn btn-xs btn-success', group.button);
+            apply.href = '#';
+            apply.addEventListener('click', async e => {
+                e.preventDefault();
+                const todo = items.filter(c => c.box.checked && !c.done);
+                if (!todo.length || apply.dataset.busy) return;
+                apply.dataset.busy = '1';
+                let failed = 0;
+                for (const [index, change] of todo.entries()) {
+                    status.textContent = `${group.title}: ${index + 1}/${todo.length} …`;
+                    try {
+                        await APPLY[change.kind](change);
+                        change.done = true;
+                        change.box.disabled = true;
+                        change.row.classList.add('lsshelper-dash-done');
+                    } catch (err) {
+                        failed++;
+                        change.row.append(` – Fehler: ${err.message}`);
+                        change.row.classList.add('lsshelper-dash-failed');
+                    }
+                    await sleep(250);
+                }
+                delete apply.dataset.busy;
+                status.textContent = `${group.title}: ${todo.length - failed} übernommen${failed ? `, ${failed} fehlgeschlagen` : ''}. Zum Neuberechnen das Dashboard erneut öffnen.`;
+            });
+            toolbar.append(apply, ' ');
+        });
+
+        const infos = plan.changes.filter(c => c.kind === 'info');
+        const notes = plan.stations.filter(s => s.note || s.left > 0);
+        if (infos.length || notes.length) {
+            const section = el('div', 'lsshelper-dash-group');
+            section.append(el('b', '', 'Hinweise'));
+            infos.forEach(c => section.append(el('div', '', `${c.station.building.caption}: ${c.text}`)));
+            notes.forEach(s => section.append(el('div', '', `${s.building.caption}: ${s.note || `${s.left} Personen ohne Sitzplatz (Fahrzeuge voll oder Lehrgang passt nicht)`}`)));
+            body.append(section);
+        }
+    }
+
+    // Knöpfe zum Öffnen: unten links auf der Hauptseite (alle Wachen) und auf jeder Wache (nur diese)
+    function dashboardButton() {
+        if (!settings.crewButton || document.getElementById('lsshelper-dash-open')) return;
         const table = document.getElementById('vehicle_table');
         const buildingId = (location.pathname.match(/^\/buildings\/(\d+)\/?$/) || [])[1];
-        if (!settings.crewButton || !table || !buildingId || document.getElementById('lsshelper-crew')) return;
+        if (buildingId && !table) return;
+        // Im Einsatz- oder Gebäudefenster (iframe) keinen globalen Knopf anzeigen
+        if (!buildingId && window.top !== window) return;
         addStyles();
-
-        const box = document.createElement('div');
-        box.id = 'lsshelper-crew';
-        const start = document.createElement('a');
-        start.href = '#';
-        start.className = 'btn btn-xs btn-default';
-        start.textContent = 'LSS Helper: Besatzung an Personal anpassen';
-        const output = document.createElement('div');
-        box.append(start, output);
-        table.before(box);
-
-        const line = text => {
-            const row = document.createElement('div');
-            row.textContent = text;
-            output.append(row);
-            return row;
-        };
-
-        start.addEventListener('click', async e => {
+        const open = document.createElement('a');
+        open.id = 'lsshelper-dash-open';
+        open.href = '#';
+        open.className = 'btn btn-xs btn-default';
+        open.textContent = buildingId ? 'LSS Helper: diese Wache prüfen' : 'LSS Helper';
+        open.addEventListener('click', e => {
             e.preventDefault();
-            output.textContent = '';
-            try {
-                const building = await (await fetch(`/api/buildings/${buildingId}`, { credentials: 'same-origin' })).json();
-                const personnel = building.personal_count;
-                if (typeof personnel !== 'number') throw new Error('Personalzahl der Wache nicht gefunden');
-
-                const seen = new Set();
-                const vehicles = [];
-                table.querySelectorAll('tbody tr a[href^="/vehicles/"]').forEach(link => {
-                    const id = (link.getAttribute('href').match(/^\/vehicles\/(\d+)$/) || [])[1];
-                    if (id && !seen.has(id)) {
-                        seen.add(id);
-                        const typed = link.closest('tr').querySelector('[vehicle_type_id]');
-                        vehicles.push({ id, name: link.textContent.trim() || `Fahrzeug ${id}`, type: typed ? parseInt(typed.getAttribute('vehicle_type_id')) : null });
-                    }
-                });
-                // Personal mit Lehrgängen; lässt sich die Liste nicht lesen, wird nur nach Köpfen gerechnet
-                let persons = await loadPersonnel(buildingId).catch(() => []);
-                const knowsTraining = persons.length > 0;
-                if (!knowsTraining) persons = Array.from({ length: personnel }, () => ({ edu: new Set(), used: false }));
-                const status = line(`Lese ${vehicles.length} Fahrzeuge …`);
-                const usable = [];
-                const skipped = [];
-                for (const vehicle of vehicles) {
-                    const crew = await loadCrewForm(vehicle.id);
-                    if (crew && vehicle.type === null) {
-                        const api = await (await fetch(`/api/vehicles/${vehicle.id}`, { credentials: 'same-origin' })).json().catch(() => ({}));
-                        vehicle.type = typeof api.vehicle_type === 'number' ? api.vehicle_type : null;
-                    }
-                    if (crew) usable.push(Object.assign(vehicle, crew));
-                    else skipped.push(vehicle.name);
-                    status.textContent = `Lese Fahrzeuge … ${usable.length + skipped.length}/${vehicles.length}`;
-                    await sleep(150);
-                }
-
-                // Ohne lesbare Personalliste gelten Lehrgänge als erfüllt, sonst würden alle Spezialfahrzeuge leer ausgehen
-                if (!knowsTraining) usable.forEach(v => (v.type = null));
-                const left = planCrew(usable, persons);
-                const seats = usable.reduce((sum, v) => sum + v.max, 0);
-                status.textContent = `Personal: ${persons.length} · Sitzplätze: ${seats} · ${left > 0 ? `${left} Personen ohne Platz (Fahrzeuge voll oder Lehrgang passt nicht)` : 'alles Personal verteilt'}`;
-                if (!knowsTraining) line('⚠ Personalliste nicht lesbar – Lehrgänge wurden nicht geprüft, es wird nur nach Köpfen gerechnet.');
-                usable.forEach(v => {
-                    const change = v.next === v.current ? 'bleibt' : `${v.current} → ${v.next}`;
-                    const trained = v.training ? ` · Lehrgang: ${v.training}` : '';
-                    const reason = v.staffed ? '' : v.training ? ' – zu wenig Personal mit diesem Lehrgang' : ' – kein Personal mehr übrig';
-                    line(`${v.staffed ? '✓' : '✗'} ${v.name}: ${change} (möglich ${v.min}–${v.max})${trained}${reason}`);
-                });
-                if (skipped.length) line(`Übersprungen (kein Besatzungsfeld gefunden): ${skipped.join(', ')}`);
-
-                const changed = usable.filter(v => v.next !== v.current);
-                if (!changed.length) return line('Nichts zu ändern.');
-                const apply = document.createElement('a');
-                apply.href = '#';
-                apply.className = 'btn btn-xs btn-success';
-                apply.textContent = `${changed.length} Fahrzeuge so einstellen`;
-                output.append(apply);
-                apply.addEventListener('click', async event => {
-                    event.preventDefault();
-                    apply.remove();
-                    const progress = line('Speichere …');
-                    let done = 0;
-                    const failed = [];
-                    for (const vehicle of changed) {
-                        try {
-                            await saveCrew(vehicle);
-                            done++;
-                        } catch (err) {
-                            failed.push(`${vehicle.name} (${err.message})`);
-                        }
-                        progress.textContent = `Speichere … ${done + failed.length}/${changed.length}`;
-                        await sleep(300);
-                    }
-                    progress.textContent = `${done} Fahrzeuge eingestellt.${failed.length ? ` Fehlgeschlagen: ${failed.join(', ')}` : ''} Seite neu laden, um die Werte zu sehen.`;
-                });
-            } catch (err) {
-                console.error('[LSS Helper] crewBalance', err);
-                line(`Fehler: ${err.message}`);
-            }
+            openDashboard(buildingId);
         });
+        if (buildingId) table.before(open);
+        else {
+            open.classList.add('lsshelper-dash-floating');
+            document.body.append(open);
+        }
     }
 
     /* ------------------------------------------------------------------ *
@@ -1449,11 +1583,11 @@
         { name: 'preloadMissions', match: /^\/$/, run: getMissions },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
-        { name: 'crewBalance', match: /^\/buildings\/\d+\/?$/, run: crewBalance },
+        { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, rerun: () => (clearMarks(), aaoHighlight()) };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, rerun: () => (clearMarks(), aaoHighlight()) };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

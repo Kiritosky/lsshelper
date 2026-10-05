@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.4.1
+// @version      0.5.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -255,10 +255,56 @@
     const specMatches = (spec, demand) =>
         spec.typeId !== undefined ? demand.types.includes(spec.typeId) : demand.attrs.includes(spec.attr);
 
+    const STOP_WORDS = new Set(['in', 'im', 'an', 'am', 'auf', 'aus', 'bei', 'mit', 'von', 'vom', 'zu', 'zur', 'zum', 'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einer', 'einem', 'und', 'nach', 'durch', 'unter', 'über']);
+
+    const isSubsequence = (short, long) => {
+        let i = 0;
+        for (const ch of long) if (ch === short[i]) i++;
+        return i === short.length;
+    };
+
+    // Bewertet, ob eine AAO eine Abkürzung des Einsatznamens ist ("Person in BM EING" = "Person in Baumaschine eingeklemmt").
+    // Jedes Kürzel muss der Reihe nach ein Wort (Anfang oder Buchstabenfolge) oder die Anfangsbuchstaben mehrerer Wörter treffen.
+    // Rückgabe: -1 = passt nicht, sonst je höher desto näher am Original.
+    function abbrevScore(tokens, words, i = 0, j = 0) {
+        if (i === tokens.length) return words.slice(j).every(w => STOP_WORDS.has(w)) ? 0 : -1;
+        if (j === words.length) return -1;
+        const token = tokens[i];
+        const word = words[j];
+        let best = -1;
+        const take = (rest, points) => {
+            if (rest >= 0) best = Math.max(best, rest + points);
+        };
+        if (STOP_WORDS.has(word)) take(abbrevScore(tokens, words, i, j + 1), 0);
+        if (token === word) take(abbrevScore(tokens, words, i + 1, j + 1), 3);
+        else if (word.startsWith(token)) take(abbrevScore(tokens, words, i + 1, j + 1), 2);
+        else if (token[0] === word[0] && isSubsequence(token, word)) take(abbrevScore(tokens, words, i + 1, j + 1), 1);
+        for (let k = 2; k <= token.length && j + k <= words.length; k++) {
+            if (words.slice(j, j + k).map(w => w[0]).join('') === token) take(abbrevScore(tokens, words, i + 1, j + k), 1);
+        }
+        return best;
+    }
+
     function findByName(aaos, names) {
         const wanted = names.map(normalizeTitle).filter(n => n.length > 2);
         const exact = aaos.filter(a => wanted.includes(normalizeTitle(a.textContent)));
         if (exact.length) return exact;
+        // Abgekürzte AAO-Namen: nur die besten Treffer
+        const wantedWords = wanted.map(n => n.split(' '));
+        const scored = aaos
+            .map(aao => {
+                const tokens = normalizeTitle(aao.textContent).split(' ').filter(Boolean);
+                // Mindestens ein Kürzel muss ein klarer Wortanfang sein, sonst passt z. B. "VU" auf "Vergiftung"
+                const scores = wantedWords.map(words =>
+                    tokens.some(t => t.length >= 3 && words.some(w => w.startsWith(t))) ? abbrevScore(tokens, words) : -1
+                );
+                return { aao, score: tokens.length ? Math.max(...scores) : -1 };
+            })
+            .filter(s => s.score >= 0);
+        if (scored.length) {
+            const top = Math.max(...scored.map(s => s.score));
+            return scored.filter(s => s.score === top).map(s => s.aao);
+        }
         return aaos.filter(a => {
             const text = normalizeTitle(a.textContent);
             return text.length > 3 && wanted.some(n => n.includes(text) || text.includes(n));
@@ -650,7 +696,8 @@
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
         };
-        setValue(caption, mission.n);
+        // Namensschema: "Einsatzname [max. Patienten/davon evtl. mit Notarzt]"
+        setValue(caption, mission.p ? `${mission.n} [${mission.p[0]}/${mission.p[2] ? mission.p[0] : 0}]` : mission.n);
 
         const amounts = new Map();
         const items = [];
@@ -703,7 +750,7 @@
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, abbrevScore };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

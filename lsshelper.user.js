@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.6.0
+// @version      0.7.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -442,6 +442,8 @@
             .lsshelper-filled { box-shadow: 0 0 0 3px #ff00d4 !important; }
             .lsshelper-tab { box-shadow: inset 0 -4px 0 #ff00d4 !important; }
             #lsshelper-panel { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
+            #lsshelper-report { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; max-height: 300px; overflow-y: auto; }
+            .lsshelper-report-row { padding: 2px 0; border-top: 1px solid rgba(128, 128, 128, 0.3); }
             #lsshelper-panel span.lsshelper-item { display: inline-block; margin: 1px 8px 1px 0; white-space: nowrap; }
         `;
         document.head.append(style);
@@ -465,6 +467,15 @@
             item.textContent = text;
             panel.append(item);
         });
+        const audit = document.createElement('a');
+        audit.className = 'btn btn-xs btn-default pull-right';
+        audit.href = '#';
+        audit.textContent = 'AAOs prüfen';
+        audit.addEventListener('click', e => {
+            e.preventDefault();
+            aaoAudit().catch(err => console.error('[LSS Helper] aaoAudit', err));
+        });
+        panel.prepend(audit);
     }
 
     function markDemands(container, aaos, demands, infos, headline) {
@@ -586,13 +597,133 @@
             const [max, min, nef, rth, transport, ktw] = mission.p;
             const patients = patientCount || min || 1;
             const transportDemand = (ktw && medical.transportKtw) || medical.transport;
-            if (transport && transportDemand) demands.push({ demand: transportDemand, label: `${transportDemand.label} (${transport} %)`, need: patients, chance: transport });
-            if (nef && medical.nef) demands.push({ demand: medical.nef, label: `${medical.nef.label} (${nef} %)`, need: 1, chance: nef });
-            if (rth && medical.rth) demands.push({ demand: medical.rth, label: `${medical.rth.label} (${rth} %)`, need: 1, chance: rth });
+            if (transport && transportDemand) demands.push({ demand: transportDemand, label: `${transportDemand.label} (${transport} %)`, need: patients, chance: transport, medical: true });
+            if (nef && medical.nef) demands.push({ demand: medical.nef, label: `${medical.nef.label} (${nef} %)`, need: 1, chance: nef, medical: true });
+            if (rth && medical.rth) demands.push({ demand: medical.rth, label: `${medical.rth.label} (${rth} %)`, need: 1, chance: rth, medical: true });
             infos.push(`ℹ Patienten: ${min && min !== max ? `${min}–${max}` : max}`);
             if (medical.restricted) infos.push('ℹ Nur Spezialfahrzeuge/Hubschrauber erreichen diesen Einsatzort');
         }
         return { demands, infos };
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Feature: AAO-Prüfung – bestehende AAOs gegen die Spieldaten abgleichen
+     * ------------------------------------------------------------------ */
+
+    // AAO-Felder, die Mengen statt Fahrzeuge angeben
+    const AMOUNT_ATTRS = /amount|value/;
+
+    // Einsatzname -> Einsatz mit der Maximalanforderung aller gleichnamigen Varianten
+    function missionsByName(missions) {
+        if (shared.byName) return shared.byName;
+        const byName = new Map();
+        Object.values(missions).forEach(m => {
+            const key = normalize(m.n);
+            const merged = byName.get(key);
+            if (!merged) {
+                byName.set(key, { n: m.n, r: Object.assign({}, m.r), p: m.p && m.p.slice(), g: m.g, c: m.c, words: normalizeTitle(m.n).split(' ') });
+                return;
+            }
+            Object.entries(m.r).forEach(([k, v]) => {
+                if (typeof v === 'number') merged.r[k] = Math.max(merged.r[k] || 0, v);
+            });
+            if (m.p) merged.p = merged.p ? merged.p.map((v, i) => Math.max(v, m.p[i])) : m.p.slice();
+        });
+        return (shared.byName = byName);
+    }
+
+    // Ordnet eine AAO über ihren (ggf. abgekürzten) Namen einem Einsatz zu: Einsatz, 'ambiguous' oder null
+    function missionForAao(text, byName) {
+        const plain = text.replace(/\[[^\]]*\]/g, ' ');
+        const exact = byName.get(normalize(plain)) || byName.get(normalizeTitle(plain));
+        if (exact) return exact;
+        const tokens = normalizeTitle(plain).split(' ').filter(Boolean);
+        if (!tokens.some(t => t.length >= 3)) return null;
+        let top = -1;
+        let hits = [];
+        byName.forEach(mission => {
+            if (!tokens.some(t => t.length >= 3 && mission.words.some(w => w.startsWith(t)))) return;
+            const score = abbrevScore(tokens, mission.words);
+            if (score > top) {
+                top = score;
+                hits = [mission];
+            } else if (score === top && score >= 0) {
+                hits.push(mission);
+            }
+        });
+        if (top < 0) return null;
+        return hits.length === 1 ? hits[0] : 'ambiguous';
+    }
+
+    function checkAao(aao, mission, aaoTypes) {
+        const text = aao.textContent.trim();
+        const specs = getAaoSpecs(aao, new Set(aaoTypes.keys())).filter(s => s.attr === undefined || !AMOUNT_ATTRS.test(s.attr));
+        const demands = missionDemands(mission, 0).demands;
+        const issues = [];
+        const have = d => specs.filter(s => specMatches(s, d.demand)).reduce((sum, s) => sum + s.amount, 0);
+
+        demands.filter(d => !d.medical).forEach(d => {
+            if (have(d) < d.need) issues.push(`fehlt: ${d.need - have(d)}× ${d.label}`);
+        });
+        const excess = new Set();
+        specs.forEach(spec => {
+            const matched = demands.filter(d => specMatches(spec, d.demand));
+            if (!matched.length) {
+                issues.push(`nicht benötigt: ${spec.amount}× ${spec.attr !== undefined ? aaoTypes.get(spec.attr) : `Fahrzeugtyp #${spec.typeId}`}`);
+            } else if (matched.length === 1 && !matched[0].medical && have(matched[0]) > matched[0].need) {
+                excess.add(matched[0]);
+            }
+        });
+        excess.forEach(d => issues.push(`evtl. zu viel: ${have(d) - d.need}× ${d.label}`));
+
+        const bracket = text.match(/\[(\d+)(?:\/\d+)?\]/);
+        if (bracket && mission.p && parseInt(bracket[1]) !== mission.p[0]) issues.push(`Klammer [${bracket[1]}…] – laut Spieldaten bis zu ${mission.p[0]} Patienten`);
+        return issues;
+    }
+
+    async function aaoAudit() {
+        const container = document.getElementById('mission-aao-group');
+        if (!container) return;
+        const aaoTypes = new Map(window.aao_types || []);
+        const byName = missionsByName(await getMissions());
+        const stats = { ok: 0, bad: 0, ambiguous: 0, unmatched: 0 };
+
+        let report = document.getElementById('lsshelper-report');
+        if (!report) {
+            report = document.createElement('div');
+            report.id = 'lsshelper-report';
+            document.getElementById('lsshelper-panel').after(report);
+        }
+        report.textContent = '';
+        const rows = document.createElement('div');
+
+        container.querySelectorAll('a.aao').forEach(aao => {
+            const text = aao.textContent.trim();
+            const mission = missionForAao(text, byName);
+            if (!mission) return stats.unmatched++;
+            if (mission === 'ambiguous') return stats.ambiguous++;
+            const issues = checkAao(aao, mission, aaoTypes);
+            if (!issues.length) return stats.ok++;
+            stats.bad++;
+            const row = document.createElement('div');
+            row.className = 'lsshelper-report-row';
+            const name = document.createElement('b');
+            name.textContent = text;
+            row.append(name, ` → ${mission.n}: ${issues.join(' · ')} `);
+            const id = aao.getAttribute('aao_id');
+            if (id) {
+                const edit = document.createElement('a');
+                edit.href = `/aaos/${id}/edit`;
+                edit.target = '_blank';
+                edit.textContent = 'bearbeiten';
+                row.append(edit);
+            }
+            rows.append(row);
+        });
+
+        const head = document.createElement('b');
+        head.textContent = `AAO-Prüfung: ${stats.bad} mit Abweichungen, ${stats.ok} in Ordnung, ${stats.ambiguous} mehrdeutig, ${stats.unmatched} keinem Einsatz zugeordnet (z. B. Fahrzeug-AAOs). Verglichen wird mit der größten Variante des Einsatzes; Rettungsdienst zählt nicht als fehlend.`;
+        report.append(head, rows);
     }
 
     /* ------------------------------------------------------------------ *

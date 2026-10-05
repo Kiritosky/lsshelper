@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.10.1
+// @version      0.11.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -813,6 +813,16 @@
                     log('Entwurf konnte nicht gespeichert werden', e);
                 }
             });
+            // Per Skript öffnen, damit sich der Tab nach dem Speichern selbst schließen darf;
+            // danach lädt dieses Einsatzfenster neu und markiert die neue AAO
+            create.addEventListener('click', e => {
+                if (e.button || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                e.preventDefault();
+                window.addEventListener('storage', event => {
+                    if (event.key === SAVED_KEY && event.newValue) location.reload();
+                });
+                window.open(create.href, AAO_WINDOW);
+            });
             document.getElementById('lsshelper-panel').append(document.createElement('br'), create);
         }
     }
@@ -968,6 +978,10 @@
 
     const AAO_PARAM = 'lsshelper_mission';
     const DRAFT_KEY = 'lsshelper_aao_draft';
+    // Der Formular-Tab trägt diesen Fensternamen; so erkennt das Skript ihn nach dem Speichern wieder
+    const AAO_WINDOW = 'lsshelper_aao';
+    const SUBMIT_KEY = 'lsshelper_aao_submitted';
+    const SAVED_KEY = 'lsshelper_aao_saved';
 
     // Einsatzkategorie -> Stichworte, nach denen in den eigenen AAO-Kategorien gesucht wird
     const CATEGORY_WORDS = {
@@ -1081,6 +1095,7 @@
         }
         if (!mission) return;
         addStyles();
+        form.addEventListener('submit', () => sessionStorage.setItem(SUBMIT_KEY, '1'));
 
         const setValue = (input, value) => {
             input.value = value;
@@ -1131,6 +1146,16 @@
         form.before(panel);
     }
 
+    // Läuft im Formular-Tab auf der Seite nach dem Speichern: Einsatzfenster benachrichtigen und Tab schließen
+    function aaoSaved() {
+        if (window.name !== AAO_WINDOW || !sessionStorage.getItem(SUBMIT_KEY)) return;
+        // Formular ist noch offen (z. B. Eingabefehler) – nichts tun
+        if (document.querySelector('input[name="aao[caption]"]')) return;
+        sessionStorage.removeItem(SUBMIT_KEY);
+        localStorage.setItem(SAVED_KEY, String(Date.now()));
+        window.close();
+    }
+
     /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
@@ -1140,6 +1165,7 @@
         { name: 'preloadMissions', match: /^\/$/, run: getMissions },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
+        { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
     ];
 
     window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, rerun: () => (clearMarks(), aaoHighlight()) };

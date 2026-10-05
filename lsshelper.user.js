@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.15.1
+// @version      0.16.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -573,14 +573,34 @@
             .lsshelper-name, .lsshelper-req { position: relative; z-index: 5; box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--lsshelper-color), 0 0 0 7px #000; ${settings.pulse ? 'animation: lsshelper-pulse 1s ease-in-out infinite alternate;' : ''} }
             .lsshelper-name { --lsshelper-color: ${settings.colorName}; }
             .lsshelper-req { --lsshelper-color: ${settings.colorVehicles}; }
-            #lsshelper-dash { position: fixed; top: 5%; left: 10%; width: 80%; max-height: 90%; overflow-y: auto; z-index: 100000; background: #fff; color: #000; border: 2px solid #000; border-radius: 6px; padding: 12px; font-size: 12px; box-shadow: 0 0 30px rgba(0, 0, 0, 0.6); }
-            #lsshelper-dash h4 { margin: 0 0 6px; color: #000; }
-            .lsshelper-dash-toolbar { margin: 6px 0; }
-            .lsshelper-dash-group { margin-top: 10px; padding-top: 6px; border-top: 1px solid #999; }
-            .lsshelper-dash-station { margin-top: 6px; font-weight: bold; }
-            .lsshelper-dash-row { display: block; font-weight: normal; margin: 0 0 0 10px; color: #000; }
-            .lsshelper-dash-done { color: #2e7d32; text-decoration: line-through; }
-            .lsshelper-dash-failed { color: #c62828; }
+            #lsshelper-dash-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100000; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px; overflow-y: auto; }
+            #lsshelper-dash { --bg: #f3f4f7; --card: #ffffff; --text: #1c1f24; --muted: #6b7280; --line: #e1e4ea; --accent: #c62828; --ok: #2e7d32; --warn: #b26a00; --bad: #c62828; width: 100%; max-width: 960px; background: var(--bg); color: var(--text); border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); font-size: 13px; line-height: 1.45; text-align: left; }
+            #lsshelper-dash.lsshelper-dark { --bg: #15171c; --card: #1f2229; --text: #e8eaed; --muted: #9aa3af; --line: #323742; --accent: #e5484d; --ok: #4caf7a; --warn: #f0b24a; --bad: #ff6b6b; }
+            .lsshelper-dash-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+            .lsshelper-dash-title { flex: 1; font-size: 17px; font-weight: 700; color: var(--text); }
+            .lsshelper-dash-title small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+            .lsshelper-dash-status { padding: 8px 16px; color: var(--muted); border-bottom: 1px solid var(--line); }
+            .lsshelper-dash-body { padding: 12px 16px 16px; display: grid; gap: 12px; }
+            .lsshelper-dash-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px 10px; }
+            .lsshelper-dash-card-head { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+            .lsshelper-dash-card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+            .lsshelper-dash-count { margin-right: auto; min-width: 22px; padding: 1px 7px; border-radius: 11px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+            .lsshelper-dash-count-ok { background: var(--ok); }
+            .lsshelper-dash-count-warn { background: var(--warn); }
+            .lsshelper-dash-station { margin: 8px 0 2px; font-weight: 700; color: var(--text); }
+            .lsshelper-dash-station small { margin-left: 8px; font-weight: 400; color: var(--muted); }
+            #lsshelper-dash label.lsshelper-dash-row { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 3px 6px; border-radius: 6px; font-weight: 400; color: var(--text); cursor: pointer; }
+            #lsshelper-dash label.lsshelper-dash-row:hover { background: var(--bg); }
+            #lsshelper-dash label.lsshelper-dash-row input { margin: 0; }
+            #lsshelper-dash label.lsshelper-dash-done { color: var(--ok); text-decoration: line-through; }
+            #lsshelper-dash .lsshelper-dash-failed { color: var(--bad); }
+            .lsshelper-dash-empty, .lsshelper-dash-note { padding: 3px 6px; color: var(--muted); }
+            .lsshelper-dash-note { color: var(--text); }
+            #lsshelper-dash a.lsshelper-btn { display: inline-block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+            #lsshelper-dash a.lsshelper-btn:hover { border-color: var(--muted); }
+            #lsshelper-dash a.lsshelper-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+            #lsshelper-dash a.lsshelper-btn-quiet { border-color: transparent; background: transparent; color: var(--muted); }
+            #lsshelper-dash a.lsshelper-btn-busy { opacity: 0.5; cursor: wait; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
@@ -1450,29 +1470,62 @@
         { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
     ];
 
+    const THEME_KEY = 'lsshelper_dash_theme';
+
     async function openDashboard(onlyBuildingId) {
         addStyles();
-        const old = document.getElementById('lsshelper-dash');
-        if (old) old.remove();
+        document.querySelectorAll('#lsshelper-dash-backdrop').forEach(node => node.remove());
         const el = (tag, cls, text) => {
             const node = document.createElement(tag);
             if (cls) node.className = cls;
             if (text) node.textContent = text;
             return node;
         };
+        const button = (text, cls, onClick) => {
+            const btn = el('a', `lsshelper-btn ${cls || ''}`, text);
+            btn.href = '#';
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                onClick(btn);
+            });
+            return btn;
+        };
+
+        const backdrop = el('div');
+        backdrop.id = 'lsshelper-dash-backdrop';
         const dash = el('div');
         dash.id = 'lsshelper-dash';
-        const close = el('a', 'btn btn-xs btn-danger pull-right', '✕');
-        close.href = '#';
-        close.addEventListener('click', e => {
-            e.preventDefault();
-            dash.remove();
+        backdrop.append(dash);
+        const closeDash = () => {
+            backdrop.remove();
+            document.removeEventListener('keydown', onKey);
+        };
+        const onKey = e => e.key === 'Escape' && closeDash();
+        document.addEventListener('keydown', onKey);
+        backdrop.addEventListener('click', e => e.target === backdrop && closeDash());
+
+        // Hell/Dunkel: ohne eigene Wahl richtet sich das Dashboard nach dem Spiel bzw. dem System
+        const autoDark = document.body.classList.contains('dark') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        const theme = button('', '', () => {
+            localStorage.setItem(THEME_KEY, dash.classList.contains('lsshelper-dark') ? 'light' : 'dark');
+            applyTheme();
         });
+        const applyTheme = () => {
+            const saved = localStorage.getItem(THEME_KEY);
+            const dark = saved ? saved === 'dark' : autoDark;
+            dash.classList.toggle('lsshelper-dark', dark);
+            theme.textContent = dark ? '☀ Hell' : '☾ Dunkel';
+        };
+        applyTheme();
+
+        const head = el('div', 'lsshelper-dash-head');
+        const title = el('div', 'lsshelper-dash-title', 'Wachen-Dashboard');
+        title.append(el('small', '', onlyBuildingId ? 'LSS Helper · diese Wache' : 'LSS Helper · alle Wachen'));
+        head.append(title, theme, button('✕', '', closeDash));
         const status = el('div', 'lsshelper-dash-status', 'Lese Wachen und Fahrzeuge …');
-        const toolbar = el('div', 'lsshelper-dash-toolbar');
-        const body = el('div');
-        dash.append(close, el('h4', '', 'LSS Helper – Wachen-Dashboard'), status, toolbar, body);
-        document.body.append(dash);
+        const body = el('div', 'lsshelper-dash-body');
+        dash.append(head, status, body);
+        document.body.append(backdrop);
 
         let plan;
         try {
@@ -1480,17 +1533,26 @@
         } catch (err) {
             console.error('[LSS Helper] dashboard', err);
             status.textContent = `Fehler: ${err.message}`;
+            status.classList.add('lsshelper-dash-failed');
             return;
         }
         const actionable = plan.changes.filter(c => c.kind !== 'info');
-        status.textContent = `${plan.stations.length} Wachen geprüft · ${actionable.length} Vorschläge. Nichts wird geändert, bevor du einen der Knöpfe drückst.`;
+        const ready = `${plan.stations.length} Wachen geprüft · ${actionable.length} Vorschläge · nichts wird geändert, bevor du „übernehmen“ drückst.`;
+        status.textContent = ready;
 
-        // Vorschau: pro Gruppe die Vorschläge je Wache, jeder einzeln abwählbar
+        // Eine Karte pro Gruppe: Vorschläge je Wache, jeder einzeln abwählbar
         DASH_GROUPS.forEach(group => {
             const items = plan.changes.filter(c => group.kinds.includes(c.kind));
-            const section = el('div', 'lsshelper-dash-group');
-            section.append(el('b', '', `${group.title} (${items.length})`));
-            if (!items.length) section.append(el('div', '', 'Alles in Ordnung.'));
+            const card = el('div', 'lsshelper-dash-card');
+            const cardHead = el('div', 'lsshelper-dash-card-head');
+            cardHead.append(el('span', 'lsshelper-dash-card-title', group.title), el('span', `lsshelper-dash-count${items.length ? '' : ' lsshelper-dash-count-ok'}`, items.length ? String(items.length) : '✓'));
+            card.append(cardHead);
+            body.append(card);
+            if (!items.length) {
+                card.append(el('div', 'lsshelper-dash-empty', 'Alles in Ordnung.'));
+                return;
+            }
+
             const byStation = new Map();
             items.forEach(c => {
                 const key = c.station ? c.station.building.caption : 'Wachen';
@@ -1498,27 +1560,30 @@
             });
             byStation.forEach((list, caption) => {
                 const station = list[0].station;
-                section.append(el('div', 'lsshelper-dash-station', station ? `${caption} – Personal ${station.personnel}, Sitzplätze ${station.seats}` : caption));
+                const stationHead = el('div', 'lsshelper-dash-station', caption);
+                if (station) stationHead.append(el('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats}`));
+                card.append(stationHead);
                 list.forEach(change => {
                     const row = el('label', 'lsshelper-dash-row');
                     change.box = el('input');
                     change.box.type = 'checkbox';
                     change.box.checked = !change.optional;
-                    row.append(change.box, ` ${change.text}`);
+                    row.append(change.box, el('span', '', change.text));
                     change.row = row;
-                    section.append(row);
+                    card.append(row);
                 });
             });
-            body.append(section);
 
-            if (!items.length) return;
-            const apply = el('a', 'btn btn-xs btn-success', group.button);
-            apply.href = '#';
-            apply.addEventListener('click', async e => {
-                e.preventDefault();
+            const toggle = button('alle an/aus', 'lsshelper-btn-quiet', () => {
+                const open = items.filter(c => !c.done);
+                const allOn = open.every(c => c.box.checked);
+                open.forEach(c => (c.box.checked = !allOn));
+            });
+            const apply = button(group.button, 'lsshelper-btn-primary', async btn => {
                 const todo = items.filter(c => c.box.checked && !c.done);
-                if (!todo.length || apply.dataset.busy) return;
-                apply.dataset.busy = '1';
+                if (!todo.length || btn.dataset.busy) return;
+                btn.dataset.busy = '1';
+                btn.classList.add('lsshelper-btn-busy');
                 let failed = 0;
                 for (const [index, change] of todo.entries()) {
                     status.textContent = `${group.title}: ${index + 1}/${todo.length} …`;
@@ -1529,25 +1594,28 @@
                         change.row.classList.add('lsshelper-dash-done');
                     } catch (err) {
                         failed++;
-                        change.row.append(` – Fehler: ${err.message}`);
+                        change.row.append(el('em', '', ` – ${err.message}`));
                         change.row.classList.add('lsshelper-dash-failed');
                     }
                     await sleep(250);
                 }
-                delete apply.dataset.busy;
+                delete btn.dataset.busy;
+                btn.classList.remove('lsshelper-btn-busy');
                 status.textContent = `${group.title}: ${todo.length - failed} übernommen${failed ? `, ${failed} fehlgeschlagen` : ''}. Zum Neuberechnen das Dashboard erneut öffnen.`;
             });
-            toolbar.append(apply, ' ');
+            cardHead.append(toggle, apply);
         });
 
-        const infos = plan.changes.filter(c => c.kind === 'info');
-        const notes = plan.stations.filter(s => s.note || s.left > 0);
+        // Hinweise: nur, was du selbst beheben musst (fehlende Lehrgänge, unlesbare Personalliste)
+        const infos = plan.changes.filter(c => c.kind === 'info').map(c => `${c.station.building.caption}: ${c.text}`);
+        const notes = plan.stations.filter(s => s.note && s.note !== 'kein Personal').map(s => `${s.building.caption}: ${s.note}`);
         if (infos.length || notes.length) {
-            const section = el('div', 'lsshelper-dash-group');
-            section.append(el('b', '', 'Hinweise'));
-            infos.forEach(c => section.append(el('div', '', `${c.station.building.caption}: ${c.text}`)));
-            notes.forEach(s => section.append(el('div', '', `${s.building.caption}: ${s.note || `${s.left} Personen ohne Sitzplatz (Fahrzeuge voll oder Lehrgang passt nicht)`}`)));
-            body.append(section);
+            const card = el('div', 'lsshelper-dash-card');
+            const cardHead = el('div', 'lsshelper-dash-card-head');
+            cardHead.append(el('span', 'lsshelper-dash-card-title', 'Hinweise'), el('span', 'lsshelper-dash-count lsshelper-dash-count-warn', String(infos.length + notes.length)));
+            card.append(cardHead);
+            infos.concat(notes).forEach(text => card.append(el('div', 'lsshelper-dash-note', text)));
+            body.append(card);
         }
     }
 

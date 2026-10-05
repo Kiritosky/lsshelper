@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.11.2
+// @version      0.11.3
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -529,6 +529,10 @@
                     })
                     .filter(c => c.amount > 0 && names.includes(c.name));
             }
+            // Fahrzeug-AAOs ohne Kategorie (oben im Fenster) gehen vor: sonst gewinnt z. B. eine Einsatz-AAO
+            // aus einem Tab, die zufällig genau 3 RTW alarmiert, gegen die eigentliche "RTW"-AAO
+            const uncategorized = candidates.filter(c => !c.aao.closest('.tab-pane'));
+            if (uncategorized.length) candidates = uncategorized;
             let hits = candidates.filter(c => c.amount === need);
             if (!hits.length && candidates.length) {
                 const fitting = candidates.filter(c => c.amount < need);

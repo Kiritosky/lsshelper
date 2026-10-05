@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.16.0
+// @version      0.17.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -601,6 +601,7 @@
             #lsshelper-dash a.lsshelper-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
             #lsshelper-dash a.lsshelper-btn-quiet { border-color: transparent; background: transparent; color: var(--muted); }
             #lsshelper-dash a.lsshelper-btn-busy { opacity: 0.5; cursor: wait; }
+            .lsshelper-menu-badge { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: #c62828; color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
@@ -1214,6 +1215,13 @@
     // prettier-ignore
     const TRAINING = {12:{gw_messtechnik:0},27:{gw_gefahrgut:0},29:{notarzt:0},31:{notarzt:0},33:{gw_hoehenrettung:0},34:{elw2:0},35:{police_einsatzleiter:0},40:{thw_zugtrupp:0},42:{thw_raumen:0},45:{thw_raumen:0},46:{wechsellader:0},51:{police_fukw:0},54:{dekon_p:0},55:{lna:0},56:{orgl:0},57:{fwk:0},59:{seg_elw:0},60:{seg_gw_san:0},61:{polizeihubschrauber:0},63:{gw_taucher:0},64:{gw_wasserrettung:0},66:{gw_wasserrettung:0},67:{gw_wasserrettung:0},68:{gw_wasserrettung:0},69:{gw_taucher:0},70:{gw_wasserrettung:0},71:{gw_wasserrettung:0},72:{police_wasserwerfer:0},73:{notarzt:1},74:{notarzt:1},75:{arff:0},76:{rettungstreppe:0},77:{gw_gefahrgut:0},78:{elw2:0},79:{police_sek:0},80:{police_sek:0},81:{police_mek:0},82:{police_mek:0},83:{werkfeuerwehr:0},84:{werkfeuerwehr:0},85:{werkfeuerwehr:0},86:{werkfeuerwehr:0},91:{seg_rescue_dogs:0},92:{thw_rescue_dogs:0},94:{k9:0},95:{police_motorcycle:0},96:{police_firefighting:0},97:{intensive_care:2,notarzt:1},98:{criminal_investigation:0},100:{water_damage_pump:0},101:{water_damage_pump:1},102:{water_damage_pump:1},103:{police_service_group_leader:1},109:{heavy_rescue:0},112:{thw_energy_supply:1},113:{energy_supply:1},125:{thw_drone:0},126:{fire_drone:4},127:{seg_drone:0},128:{fire_drone:0},129:{fire_drone:0,elw2:0},130:{care_service:1,care_service_equipment:2},131:{care_service:0},133:{care_service:1,care_service_equipment:2},134:{police_horse:2},138:{fire_care_service:1,care_service_equipment:2},139:{fire_care_service:1,care_service_equipment:2},140:{fire_care_service:0},144:{thw_command:0},145:{thw_command:0},147:{thw_command:0},148:{thw_command:0},149:{notarzt:1},151:{mountain_command:0},153:{seg_rescue_dogs:0},155:{mountain_height_rescue:4},156:{polizeihubschrauber:1,police_helicopter_lift:1},157:{rescue_helicopter_lift:1,notarzt:1},158:{mountain_height_rescue:0},159:{coastal_rescue:0},161:{coastal_helicopter:1,coastal_helicopter_lift:1,emergency_paramedic_water_rescue:1},162:{railway_fire:0},163:{railway_fire:0},165:{police_speaker_operator:0},171:{disaster_response_technology:0},172:{disaster_response_technology:1},173:{disaster_response_technology:1},174:{disaster_response_technology:2},175:{disaster_response_technology:2},176:{thw_care_service:1,care_service_equipment:2},177:{thw_care_service:0},180:{energy_supply:1},181:{thw_bridge_construction:0},182:{thw_bridge_construction_crane:0},183:{thw_bridge_construction:6},184:{highway_police:0}};
 
+    // Lehrgang -> Bezeichnung in der Personalliste
+    // prettier-ignore
+    const TRAINING_NAMES = {gw_messtechnik:'GW-Messtechnik',gw_gefahrgut:'GW-Gefahrgut',notarzt:'Notarzt',gw_hoehenrettung:'GW-Höhenrettung',elw2:'ELW 2',police_einsatzleiter:'Zugführer (leBefKw)',thw_zugtrupp:'Zugtrupp',thw_raumen:'Fachgruppe Räumen',wechsellader:'Wechsellader',police_fukw:'Hundertschaftsführer (FüKw)',dekon_p:'Dekon-P',lna:'LNA',orgl:'OrgL',fwk:'Feuerwehrkran',seg_elw:'Einsatzleitung (SEG)',seg_gw_san:'GW-San',polizeihubschrauber:'Polizeihubschrauber',gw_taucher:'GW-Taucher',gw_wasserrettung:'GW-Wasserrettung',police_wasserwerfer:'Wasserwerfer',arff:'Flugfeldlöschfahrzeug',rettungstreppe:'Rettungstreppe',police_sek:'SEK',police_mek:'MEK',werkfeuerwehr:'Werkfeuerwehr',seg_rescue_dogs:'Rettungshundeführer',thw_rescue_dogs:'Rettungshundeführer (THW)',k9:'Hundeführer (Schutzhund)',police_motorcycle:'Motorradstaffel',police_firefighting:'Brandbekämpfung',intensive_care:'Intensivpflege',criminal_investigation:'Kriminalpolizist',water_damage_pump:'Fachgruppe Wasserschaden/Pumpen',police_service_group_leader:'Dienstgruppenleitung',heavy_rescue:'FGr SB',thw_energy_supply:'FGr E',energy_supply:'NEA200',thw_drone:'Tr UL',fire_drone:'Drohnen-Schulung',seg_drone:'Drohnenoperator',care_service:'Betreuungshelfer',care_service_equipment:'Verpflegungshelfer',police_horse:'Reiterstaffel',fire_care_service:'Feuerwehr-Verpflegungseinheit',thw_command:'Fachzug Führung und Kommunikation',mountain_command:'EL Bergrettung',mountain_height_rescue:'Höhenretter',police_helicopter_lift:'Windenoperator',rescue_helicopter_lift:'Windenoperator',coastal_rescue:'Seenotretter',coastal_helicopter:'Hubschrauberpilot (Seenotrettung)',coastal_helicopter_lift:'Windenoperator',emergency_paramedic_water_rescue:'Notfallsanitäter mit Wasserrettungsausbildung',railway_fire:'Bahnrettung',police_speaker_operator:'Lautsprecheroperator',disaster_response_technology:'SEG - Technik und Sicherheit',thw_care_service:'Logistik-Verpflegung',thw_bridge_construction:'Fachgruppe Brückenbau',thw_bridge_construction_crane:'Kranführer',highway_police:'Autobahnpolizei'};
+
+    // Wachentyp -> Typ der Schule, die dessen Lehrgänge anbietet (Feuerwehr-, Rettungs-, Polizei-, THW-Schule)
+    const SCHOOL_TYPES = { 0: 1, 18: 1, 2: 3, 5: 3, 20: 3, 6: 8, 19: 8, 9: 10 };
+
     // Gebäudetyp -> Kürzel im Wachennamen ("Ballrechten FW 1"); nur für Namensvorschläge neuer Wachen
     const BUILDING_CODES = { 0: 'FW', 2: 'RW', 4: 'KH', 5: 'RTH', 6: 'PW', 18: 'FW', 19: 'PW', 20: 'RW', 25: 'BW' };
 
@@ -1395,6 +1403,7 @@
             if (!field) throw new Error('Namensfeld nicht gefunden');
             return submitEditForm(`/buildings/${change.building.id}/edit`, f => Array.from(f.elements).some(isName), { [field.name]: change.caption });
         },
+        leitstelle: change => submitEditForm(`/buildings/${change.building.id}/edit`, f => f.querySelector('[name="building[leitstelle_building_id]"]'), { 'building[leitstelle_building_id]': change.target.id }),
         // Zuweisen und Lösen ist im Spiel derselbe Umschalter – deshalb vorher den aktuellen Stand prüfen
         assign: change => toggleBinding(change, true),
     };
@@ -1447,9 +1456,6 @@
                 if (v.staffed && v.next !== v.current) {
                     changes.push({ kind: 'limit', station, vehicle: v, text: `${v.caption}: Sitzlimit ${v.current} → ${v.next}` });
                 }
-                if (needs && !v.staffed) {
-                    changes.push({ kind: 'info', station, text: `✗ ${v.caption}: zu wenig Personal mit Lehrgang (${v.all.concat(v.partial.map(p => p[0])).join(', ')})` });
-                }
                 // Gleichnamige Fahrzeuge lassen sich in der Personalliste nicht unterscheiden
                 if (!needs || !v.staffed || duplicate(v.caption)) return;
                 const bound = persons.filter(p => p.bound === v.caption);
@@ -1457,14 +1463,60 @@
                     changes.push({ kind: 'assign', station, vehicle: v, person, text: `${person.name} → ${v.caption}${person.bound ? ` (bisher ${person.bound})` : ''}` });
                 });
             });
+            // Lehrgangsbedarf: so viele Ausgebildete brauchen die Fahrzeuge der Wache zusammen, so viele gibt es
+            const demand = {};
+            crewed.forEach(v => v.partial.forEach(([key, n]) => {
+                demand[key] = demand[key] || { need: 0, vehicles: [] };
+                demand[key].need += n;
+                demand[key].vehicles.push(v.caption);
+            }));
+            Object.entries(demand).forEach(([key, { need, vehicles }]) => {
+                const missing = need - persons.filter(p => p.edu.has(key)).length;
+                if (missing > 0) changes.push({ kind: 'training', station, text: `braucht noch ${missing}× ${TRAINING_NAMES[key] || key} (für ${vehicles.join(', ')})` });
+            });
             await sleep(100);
         }
-        if (!onlyBuildingId) changes.push(...planBuildingNames(buildings));
+        if (!onlyBuildingId) changes.push(...planLeitstellen(buildings), ...planBuildingNames(buildings));
+        else changes.push(...planLeitstellen(buildings).filter(c => String(c.building.id) === String(onlyBuildingId)));
         changes.push(...planNames(stations));
-        return { stations, changes };
+        return { stations, changes, buildings };
     }
 
+    // Wachen ohne Leitstelle bekommen die nächstgelegene eigene Leitstelle vorgeschlagen
+    function planLeitstellen(buildings) {
+        const centers = buildings.filter(b => b.building_type === 7);
+        if (!centers.length) return [];
+        return buildings
+            .filter(b => b.building_type !== 7 && !b.leitstelle_building_id)
+            .map(building => {
+                const distance = other => Math.hypot(other.latitude - building.latitude, other.longitude - building.longitude);
+                const target = centers.slice().sort((a, b) => distance(a) - distance(b))[0];
+                return { kind: 'leitstelle', building, target, text: `${building.caption} → ${target.caption}` };
+            });
+    }
+
+    // Zahl der offenen Vorschläge für den Zähler am Menüeintrag
+    const COUNT_KEY = 'lsshelper_dash_count';
+    const COUNT_TTL = 30 * 60 * 1000;
+
+    function showDashCount(count) {
+        try {
+            localStorage.setItem(COUNT_KEY, JSON.stringify({ t: Date.now(), n: count }));
+        } catch (e) {
+            /* Zähler ist nur Komfort */
+        }
+        const root = window.top === window ? document : null;
+        if (!root) return;
+        root.querySelectorAll('.lsshelper-menu-badge').forEach(badge => {
+            badge.textContent = count ? String(count) : '';
+            badge.style.display = count ? '' : 'none';
+        });
+    }
+
+    const countOpen = changes => changes.filter(c => !c.done && !c.optional && c.kind !== 'training').length;
+
     const DASH_GROUPS = [
+        { title: 'Leitstelle', kinds: ['leitstelle'], button: 'Leitstelle zuweisen' },
         { title: 'Sitzlimits', kinds: ['limit'], button: 'Sitzlimits übernehmen' },
         { title: 'Lehrgangspersonal', kinds: ['assign'], button: 'Lehrgangspersonal zuweisen' },
         { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
@@ -1602,21 +1654,32 @@
                 delete btn.dataset.busy;
                 btn.classList.remove('lsshelper-btn-busy');
                 status.textContent = `${group.title}: ${todo.length - failed} übernommen${failed ? `, ${failed} fehlgeschlagen` : ''}. Zum Neuberechnen das Dashboard erneut öffnen.`;
+                if (!onlyBuildingId) showDashCount(countOpen(plan.changes));
             });
             cardHead.append(toggle, apply);
         });
 
-        // Hinweise: nur, was du selbst beheben musst (fehlende Lehrgänge, unlesbare Personalliste)
-        const infos = plan.changes.filter(c => c.kind === 'info').map(c => `${c.station.building.caption}: ${c.text}`);
+        // Lehrgangsbedarf: fehlende Ausbildungen je Wache, mit Sprung zur passenden eigenen Schule oder zu den Verbandslehrgängen
+        const trainings = plan.changes.filter(c => c.kind === 'training');
         const notes = plan.stations.filter(s => s.note && s.note !== 'kein Personal').map(s => `${s.building.caption}: ${s.note}`);
-        if (infos.length || notes.length) {
+        if (trainings.length || notes.length) {
             const card = el('div', 'lsshelper-dash-card');
             const cardHead = el('div', 'lsshelper-dash-card-head');
-            cardHead.append(el('span', 'lsshelper-dash-card-title', 'Hinweise'), el('span', 'lsshelper-dash-count lsshelper-dash-count-warn', String(infos.length + notes.length)));
+            cardHead.append(el('span', 'lsshelper-dash-card-title', 'Lehrgangsbedarf'), el('span', 'lsshelper-dash-count lsshelper-dash-count-warn', String(trainings.length + notes.length)));
             card.append(cardHead);
-            infos.concat(notes).forEach(text => card.append(el('div', 'lsshelper-dash-note', text)));
+            trainings.forEach(change => {
+                const row = el('div', 'lsshelper-dash-note', `${change.station.building.caption} ${change.text} `);
+                const school = plan.buildings.find(b => b.building_type === SCHOOL_TYPES[change.station.building.building_type]);
+                const link = el('a', 'lsshelper-btn lsshelper-btn-quiet', school ? `${school.caption} öffnen` : 'Verbandslehrgänge öffnen');
+                link.href = school ? `/buildings/${school.id}` : '/schoolings';
+                link.target = '_blank';
+                row.append(link);
+                card.append(row);
+            });
+            notes.forEach(text => card.append(el('div', 'lsshelper-dash-note', text)));
             body.append(card);
         }
+        if (!onlyBuildingId) showDashCount(countOpen(plan.changes));
     }
 
     // Zum Öffnen: Eintrag im Profilmenü der Hauptseite (alle Wachen) und Knopf auf jeder Wache (nur diese)
@@ -1644,9 +1707,30 @@
             const item = document.createElement('li');
             item.setAttribute('role', 'presentation');
             open.className = '';
-            open.textContent = 'LSS Helper: Wachen-Dashboard';
+            open.textContent = 'LSS Helper: Wachen-Dashboard ';
             item.append(open);
             aao.closest('li').after(item);
+            // Zähler offener Vorschläge: am Menüeintrag und am Profil-Symbol, damit man ihn ohne Aufklappen sieht
+            const badge = () => {
+                const span = document.createElement('span');
+                span.className = 'lsshelper-menu-badge';
+                span.style.display = 'none';
+                return span;
+            };
+            open.append(badge());
+            const toggle = item.closest('li.dropdown') && item.closest('li.dropdown').querySelector('a.dropdown-toggle');
+            if (toggle) toggle.append(badge());
+            let cached = null;
+            try {
+                cached = JSON.parse(localStorage.getItem(COUNT_KEY) || 'null');
+            } catch (e) {
+                /* neu berechnen */
+            }
+            if (cached) showDashCount(cached.n);
+            // Höchstens alle 30 Minuten im Hintergrund neu berechnen, mit Abstand zum Seitenaufbau
+            if (!cached || Date.now() - cached.t > COUNT_TTL) {
+                setTimeout(() => planFleet(null, () => {}).then(plan => showDashCount(countOpen(plan.changes))).catch(log), 8000);
+            }
         } else {
             open.classList.add('lsshelper-dash-floating');
             document.body.append(open);

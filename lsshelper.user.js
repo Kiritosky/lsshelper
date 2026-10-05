@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.7.0
+// @version      0.8.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -276,6 +276,10 @@
             if (rest >= 0) best = Math.max(best, rest + points);
         };
         if (STOP_WORDS.has(word)) take(abbrevScore(tokens, words, i, j + 1), 0);
+        if (token.endsWith('*')) {
+            if (flexFits(token, word)) take(abbrevScore(tokens, words, i + 1, j + 1), 2);
+            return best;
+        }
         if (token === word) take(abbrevScore(tokens, words, i + 1, j + 1), 3);
         else if (word.startsWith(token)) take(abbrevScore(tokens, words, i + 1, j + 1), 2);
         else if (token[0] === word[0] && isSubsequence(token, word)) take(abbrevScore(tokens, words, i + 1, j + 1), 1);
@@ -285,20 +289,61 @@
         return best;
     }
 
+    // Kürzel mit Endungs-Platzhalter: "gebrochener*" (aus "Gebrochener(s)") passt auf "gebrochener" und "gebrochenes"
+    function flexFits(token, word) {
+        const base = token.slice(0, -1);
+        let common = 0;
+        while (common < base.length && base[common] === word[common]) common++;
+        return common >= Math.max(3, base.length - 2) && Math.abs(word.length - base.length) <= 2;
+    }
+
+    // Zerlegt einen AAO-Namen in alle Lesarten: "Gebrochener(s) Arm/ Bein [1]" -> "gebrochener* arm", "gebrochener* bein"
+    function nameVariants(text) {
+        const clean = text
+            .replace(/\[[^\]]*\]/g, ' ')
+            .replace(/(\S)\([^)\s]{1,3}\)/g, '$1*')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/\s*\/\s*/g, '/')
+            .toLowerCase();
+        const toTokens = s => s.replace(/[^a-z0-9äöüß*]+/g, ' ').trim().split(' ').filter(Boolean);
+        const variants = new Map();
+        const add = tokens => tokens.length && variants.set(tokens.join(' '), tokens);
+        // "Arm/Bein": jedes Wort mit Schrägstrich ist eine Auswahl
+        let combos = [[]];
+        clean.split(/\s+/).filter(Boolean).forEach(part => {
+            const options = part.split('/').map(toTokens).filter(o => o.length);
+            if (options.length) combos = combos.flatMap(c => options.map(o => c.concat(o))).slice(0, 16);
+        });
+        combos.forEach(add);
+        // "Name A / Name B": ganze Namen als Auswahl
+        const whole = clean.split('/').map(toTokens);
+        if (whole.length > 1 && whole.every(t => t.length >= 2)) whole.forEach(add);
+        return Array.from(variants.values());
+    }
+
+    // Wie gut passt eine der Lesarten auf den Einsatznamen? -1 = gar nicht, 1000 = wörtlich
+    function nameScore(variants, words) {
+        // Mindestens ein Kürzel muss ein klarer Wortanfang sein, sonst passt z. B. "VU" auf "Vergiftung"
+        const isStrong = t => {
+            const base = t.replace('*', '');
+            return base.length >= 3 && words.some(w => (t.endsWith('*') ? flexFits(t, w) : w.startsWith(base)));
+        };
+        let best = -1;
+        variants.forEach(tokens => {
+            if (tokens.join(' ') === words.join(' ')) best = 1000;
+            else if (tokens.some(isStrong)) best = Math.max(best, abbrevScore(tokens, words));
+        });
+        return best;
+    }
+
     function findByName(aaos, names) {
         const wanted = names.map(normalizeTitle).filter(n => n.length > 2);
-        const exact = aaos.filter(a => wanted.includes(normalizeTitle(a.textContent)));
-        if (exact.length) return exact;
-        // Abgekürzte AAO-Namen: nur die besten Treffer
         const wantedWords = wanted.map(n => n.split(' '));
+        // Wörtliche oder abgekürzte AAO-Namen: nur die besten Treffer
         const scored = aaos
             .map(aao => {
-                const tokens = normalizeTitle(aao.textContent).split(' ').filter(Boolean);
-                // Mindestens ein Kürzel muss ein klarer Wortanfang sein, sonst passt z. B. "VU" auf "Vergiftung"
-                const scores = wantedWords.map(words =>
-                    tokens.some(t => t.length >= 3 && words.some(w => w.startsWith(t))) ? abbrevScore(tokens, words) : -1
-                );
-                return { aao, score: tokens.length ? Math.max(...scores) : -1 };
+                const variants = nameVariants(aao.textContent);
+                return { aao, score: Math.max(-1, ...wantedWords.map(words => nameScore(variants, words))) };
             })
             .filter(s => s.score >= 0);
         if (scored.length) {
@@ -632,27 +677,30 @@
         return (shared.byName = byName);
     }
 
-    // Ordnet eine AAO über ihren (ggf. abgekürzten) Namen einem Einsatz zu: Einsatz, 'ambiguous' oder null
-    function missionForAao(text, byName) {
-        const plain = text.replace(/\[[^\]]*\]/g, ' ');
-        const exact = byName.get(normalize(plain)) || byName.get(normalizeTitle(plain));
-        if (exact) return exact;
-        const tokens = normalizeTitle(plain).split(' ').filter(Boolean);
-        if (!tokens.some(t => t.length >= 3)) return null;
-        let top = -1;
-        let hits = [];
-        byName.forEach(mission => {
-            if (!tokens.some(t => t.length >= 3 && mission.words.some(w => w.startsWith(t)))) return;
-            const score = abbrevScore(tokens, mission.words);
-            if (score > top) {
-                top = score;
-                hits = [mission];
-            } else if (score === top && score >= 0) {
-                hits.push(mission);
-            }
+    // Ordnet eine AAO über ihren (ggf. abgekürzten) Namen ihren Einsätzen zu; "Arm/Bein" ergibt zwei
+    function missionsForAao(text, byName) {
+        const found = new Set();
+        let ambiguous = false;
+        nameVariants(text).forEach(tokens => {
+            const exact = byName.get(tokens.join(' '));
+            if (exact) return found.add(exact);
+            let top = -1;
+            let hits = [];
+            byName.forEach(mission => {
+                const score = nameScore([tokens], mission.words);
+                if (score > top) {
+                    top = score;
+                    hits = [mission];
+                } else if (score === top && score >= 0) {
+                    hits.push(mission);
+                }
+            });
+            if (top < 0) return;
+            // Gleichnamige Einsätze mit Klammerzusatz zählen als einer
+            if (hits.every(h => h.words.join(' ') === hits[0].words.join(' '))) found.add(hits[0]);
+            else ambiguous = true;
         });
-        if (top < 0) return null;
-        return hits.length === 1 ? hits[0] : 'ambiguous';
+        return { missions: Array.from(found), ambiguous };
     }
 
     function checkAao(aao, mission, aaoTypes) {
@@ -699,17 +747,16 @@
 
         container.querySelectorAll('a.aao').forEach(aao => {
             const text = aao.textContent.trim();
-            const mission = missionForAao(text, byName);
-            if (!mission) return stats.unmatched++;
-            if (mission === 'ambiguous') return stats.ambiguous++;
-            const issues = checkAao(aao, mission, aaoTypes);
-            if (!issues.length) return stats.ok++;
+            const { missions, ambiguous } = missionsForAao(text, byName);
+            if (!missions.length) return ambiguous ? stats.ambiguous++ : stats.unmatched++;
+            const problems = missions.map(mission => ({ mission, issues: checkAao(aao, mission, aaoTypes) })).filter(p => p.issues.length);
+            if (!problems.length) return stats.ok++;
             stats.bad++;
             const row = document.createElement('div');
             row.className = 'lsshelper-report-row';
             const name = document.createElement('b');
             name.textContent = text;
-            row.append(name, ` → ${mission.n}: ${issues.join(' · ')} `);
+            row.append(name, ...problems.map(p => ` → ${p.mission.n}: ${p.issues.join(' · ')} `));
             const id = aao.getAttribute('aao_id');
             if (id) {
                 const edit = document.createElement('a');
@@ -898,7 +945,7 @@
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, abbrevScore };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

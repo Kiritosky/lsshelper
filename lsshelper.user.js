@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.11.3
-// @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
+// @version      0.12.0
+// @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
 // @updateURL    https://raw.githubusercontent.com/Kiritosky/lsshelper/main/lsshelper.user.js
@@ -34,6 +34,7 @@
         openTab: true,
         createButton: true,
         auditButton: true,
+        crewButton: true,
         pulse: true,
         colorName: '#ff00d4',
         colorVehicles: '#00e5ff',
@@ -48,6 +49,7 @@
         openTab: 'AAO-Tab automatisch öffnen',
         createButton: 'Button „AAO anlegen“ anzeigen',
         auditButton: 'Button „AAOs prüfen“ anzeigen',
+        crewButton: 'Button „Besatzung anpassen“ auf Wachen anzeigen',
         pulse: 'Markierung pulsieren lassen',
         colorName: 'Farbe Namens-Treffer',
         colorVehicles: 'Farbe Fahrzeug-AAOs',
@@ -571,6 +573,7 @@
             .lsshelper-name, .lsshelper-req { position: relative; z-index: 5; box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--lsshelper-color), 0 0 0 7px #000; ${settings.pulse ? 'animation: lsshelper-pulse 1s ease-in-out infinite alternate;' : ''} }
             .lsshelper-name { --lsshelper-color: ${settings.colorName}; }
             .lsshelper-req { --lsshelper-color: ${settings.colorVehicles}; }
+            #lsshelper-crew { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
             #lsshelper-settings input[type="number"] { width: 60px; color: #000; }
@@ -1168,6 +1171,150 @@
     }
 
     /* ------------------------------------------------------------------ *
+     * Feature: Besatzung einer Wache an das vorhandene Personal anpassen (/buildings/ID)
+     * ------------------------------------------------------------------ */
+
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Liest aus dem Bearbeiten-Formular eines Fahrzeugs das Feld "maximale Besatzung" samt erlaubtem Bereich
+    async function loadCrewForm(id) {
+        const html = await (await fetch(`/vehicles/${id}/edit`, { credentials: 'same-origin' })).text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const field = doc.querySelector('[name="vehicle[personal_max]"], [name*="personal_max"], [name*="max_personnel"]');
+        if (!field || !field.form) return null;
+        let values;
+        if (field.tagName === 'SELECT') values = Array.from(field.options).map(o => parseInt(o.value)).filter(v => !isNaN(v));
+        else values = [parseInt(field.getAttribute('min')), parseInt(field.getAttribute('max'))];
+        if (!values.length || values.some(isNaN)) return null;
+        return { form: field.form, field, min: Math.min(...values), max: Math.max(...values), current: parseInt(field.value) };
+    }
+
+    // Verteilt das Personal: erst bekommt jedes Fahrzeug seine Mindestbesatzung (in Listenreihenfolge),
+    // der Rest wird reihum verteilt, bis alle voll sind oder das Personal aufgebraucht ist.
+    function planCrew(vehicles, personnel) {
+        let remaining = personnel;
+        vehicles.forEach(v => {
+            v.staffed = v.max > 0 && remaining >= v.min;
+            v.next = v.min;
+            if (v.staffed) remaining -= v.min;
+        });
+        let open = vehicles.filter(v => v.staffed && v.next < v.max);
+        while (remaining > 0 && open.length) {
+            open.forEach(v => {
+                if (remaining > 0) {
+                    v.next++;
+                    remaining--;
+                }
+            });
+            open = open.filter(v => v.next < v.max);
+        }
+        return remaining;
+    }
+
+    async function saveCrew(vehicle) {
+        const body = new URLSearchParams();
+        Array.from(vehicle.form.elements).forEach(el => {
+            if (!el.name || el.disabled || ['submit', 'button', 'file', 'reset'].includes(el.type)) return;
+            if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
+            body.append(el.name, el === vehicle.field ? String(vehicle.next) : el.value);
+        });
+        const response = await fetch(vehicle.form.getAttribute('action') || `/vehicles/${vehicle.id}`, { method: 'POST', body, credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    }
+
+    function crewBalance() {
+        const table = document.getElementById('vehicle_table');
+        const buildingId = (location.pathname.match(/^\/buildings\/(\d+)\/?$/) || [])[1];
+        if (!settings.crewButton || !table || !buildingId || document.getElementById('lsshelper-crew')) return;
+        addStyles();
+
+        const box = document.createElement('div');
+        box.id = 'lsshelper-crew';
+        const start = document.createElement('a');
+        start.href = '#';
+        start.className = 'btn btn-xs btn-default';
+        start.textContent = 'LSS Helper: Besatzung an Personal anpassen';
+        const output = document.createElement('div');
+        box.append(start, output);
+        table.before(box);
+
+        const line = text => {
+            const row = document.createElement('div');
+            row.textContent = text;
+            output.append(row);
+            return row;
+        };
+
+        start.addEventListener('click', async e => {
+            e.preventDefault();
+            output.textContent = '';
+            try {
+                const building = await (await fetch(`/api/buildings/${buildingId}`, { credentials: 'same-origin' })).json();
+                const personnel = building.personal_count;
+                if (typeof personnel !== 'number') throw new Error('Personalzahl der Wache nicht gefunden');
+
+                const seen = new Set();
+                const vehicles = [];
+                table.querySelectorAll('tbody tr a[href^="/vehicles/"]').forEach(link => {
+                    const id = (link.getAttribute('href').match(/^\/vehicles\/(\d+)$/) || [])[1];
+                    if (id && !seen.has(id)) {
+                        seen.add(id);
+                        vehicles.push({ id, name: link.textContent.trim() || `Fahrzeug ${id}` });
+                    }
+                });
+                const status = line(`Lese ${vehicles.length} Fahrzeuge …`);
+                const usable = [];
+                const skipped = [];
+                for (const vehicle of vehicles) {
+                    const crew = await loadCrewForm(vehicle.id);
+                    if (crew) usable.push(Object.assign(vehicle, crew));
+                    else skipped.push(vehicle.name);
+                    status.textContent = `Lese Fahrzeuge … ${usable.length + skipped.length}/${vehicles.length}`;
+                    await sleep(150);
+                }
+
+                const left = planCrew(usable, personnel);
+                const seats = usable.reduce((sum, v) => sum + v.max, 0);
+                status.textContent = `Personal: ${personnel} · Sitzplätze: ${seats} · ${left > 0 ? `${left} Personen bleiben übrig (alle Fahrzeuge voll)` : 'alles Personal verteilt'}`;
+                usable.forEach(v => {
+                    const change = v.next === v.current ? 'bleibt' : `${v.current} → ${v.next}`;
+                    line(`${v.staffed ? '✓' : '✗'} ${v.name}: ${change} (möglich ${v.min}–${v.max})${v.staffed ? '' : ' – kein Personal mehr übrig'}`);
+                });
+                if (skipped.length) line(`Übersprungen (kein Besatzungsfeld gefunden): ${skipped.join(', ')}`);
+
+                const changed = usable.filter(v => v.next !== v.current);
+                if (!changed.length) return line('Nichts zu ändern.');
+                const apply = document.createElement('a');
+                apply.href = '#';
+                apply.className = 'btn btn-xs btn-success';
+                apply.textContent = `${changed.length} Fahrzeuge so einstellen`;
+                output.append(apply);
+                apply.addEventListener('click', async event => {
+                    event.preventDefault();
+                    apply.remove();
+                    const progress = line('Speichere …');
+                    let done = 0;
+                    const failed = [];
+                    for (const vehicle of changed) {
+                        try {
+                            await saveCrew(vehicle);
+                            done++;
+                        } catch (err) {
+                            failed.push(`${vehicle.name} (${err.message})`);
+                        }
+                        progress.textContent = `Speichere … ${done + failed.length}/${changed.length}`;
+                        await sleep(300);
+                    }
+                    progress.textContent = `${done} Fahrzeuge eingestellt.${failed.length ? ` Fehlgeschlagen: ${failed.join(', ')}` : ''} Seite neu laden, um die Werte zu sehen.`;
+                });
+            } catch (err) {
+                console.error('[LSS Helper] crewBalance', err);
+                line(`Fehler: ${err.message}`);
+            }
+        });
+    }
+
+    /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
 
@@ -1176,6 +1323,7 @@
         { name: 'preloadMissions', match: /^\/$/, run: getMissions },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
+        { name: 'crewBalance', match: /^\/buildings\/\d+\/?$/, run: crewBalance },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
     ];
 

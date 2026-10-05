@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.15.0
+// @version      0.15.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1346,6 +1346,9 @@
         Array.from(form.elements).forEach(el => {
             if (!el.name || el.disabled || ['submit', 'button', 'file', 'reset'].includes(el.type)) return;
             if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
+            // Auswahlfelder ohne Einträge (z. B. Besatzung bei Abrollbehältern) schickt auch der Browser nicht mit;
+            // ein leerer Wert würde vom Spiel als ungültig abgelehnt
+            if (el.tagName === 'SELECT' && !el.selectedOptions.length) return;
             let value = el.value;
             if (Object.prototype.hasOwnProperty.call(changes, el.name)) {
                 value = String(changes[el.name]);
@@ -1355,6 +1358,11 @@
         });
         const response = await fetch(form.getAttribute('action'), { method: 'POST', body, credentials: 'same-origin' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        // Lehnt das Spiel die Eingabe ab, zeigt es das Formular mit Fehlermeldung erneut an, statt weiterzuleiten
+        if (!response.redirected) {
+            const error = new DOMParser().parseFromString(await response.text(), 'text/html').querySelector('.alert-danger, .alert-error, .has-error .help-inline');
+            if (error) throw new Error(error.textContent.replace(/×/g, '').replace(/\s+/g, ' ').trim());
+        }
     }
 
     const APPLY = {
@@ -1590,7 +1598,7 @@
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, rerun: () => (clearMarks(), aaoHighlight()) };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

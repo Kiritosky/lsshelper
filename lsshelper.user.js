@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.11.1
+// @version      0.11.2
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -522,8 +522,12 @@
             if (!candidates.length) {
                 const names = demand ? demand.texts.concat(demand.label).map(normalize) : [normalize(label)];
                 candidates = aaos
-                    .filter(a => names.includes(normalize(a.textContent).replace(/^\d+ (x )?/, '')))
-                    .map(aao => ({ aao, amount: 1 }));
+                    .map(aao => {
+                        const text = normalizeTitle(aao.textContent);
+                        const count = text.match(/^(\d+)\s*x?\s+(.+)$/) || text.match(/^()(.+?)\s+x?\s*\d+$/);
+                        return { aao, name: count ? count[2] : text, amount: count && count[1] ? parseInt(count[1]) : 1 };
+                    })
+                    .filter(c => c.amount > 0 && names.includes(c.name));
             }
             let hits = candidates.filter(c => c.amount === need);
             if (!hits.length && candidates.length) {
@@ -735,7 +739,8 @@
         if (/übergabe/i.test(title) || (!type && patientCount && !missing.length)) {
             const medical = MEDICAL.default;
             const demands = [];
-            if (patientCount) demands.push({ demand: medical.transport, label: 'RTW (1 pro Patient)', need: patientCount, scope: 'all' });
+            const transport = Object.assign({}, medical.transport, { attrs: ['rtw', 'naw', 'ktw_or_rtw', 'ktw_or_rtw_2'] });
+            if (patientCount) demands.push({ demand: transport, label: 'RTW (1 pro Patient)', need: patientCount, scope: 'all' });
             ['nef', 'rth', 'lna', 'orgl'].forEach(key => {
                 if (patientNeeds[key]) demands.push({ demand: medical[key], label: medical[key].label, need: patientNeeds[key] });
             });

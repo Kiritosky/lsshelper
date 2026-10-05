@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.8.0
+// @version      0.9.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -19,6 +19,88 @@
     const CACHE_TTL = 24 * 60 * 60 * 1000;
 
     const log = (...args) => DEBUG && console.log('[LSS Helper]', ...args);
+
+    /* ------------------------------------------------------------------ *
+     * Kern: Einstellungen (⚙ in der Helfer-Leiste)
+     * ------------------------------------------------------------------ */
+
+    const SETTINGS_KEY = 'lsshelper_settings';
+    const DEFAULTS = {
+        markName: true,
+        markVehicles: true,
+        subtractPresent: true,
+        showList: true,
+        openTab: true,
+        createButton: true,
+        auditButton: true,
+        pulse: true,
+        colorName: '#ff00d4',
+        colorVehicles: '#00e5ff',
+        minChance: 50,
+    };
+    const SETTINGS_LABELS = {
+        markName: 'AAO mit Einsatznamen markieren',
+        markVehicles: 'Fahrzeug-AAOs markieren',
+        subtractPresent: 'Bereits alarmierte Fahrzeuge abziehen',
+        showList: 'Fahrzeugliste in der Leiste anzeigen',
+        openTab: 'AAO-Tab automatisch öffnen',
+        createButton: 'Button „AAO anlegen“ anzeigen',
+        auditButton: 'Button „AAOs prüfen“ anzeigen',
+        pulse: 'Markierung pulsieren lassen',
+        colorName: 'Farbe Namens-Treffer',
+        colorVehicles: 'Farbe Fahrzeug-AAOs',
+        minChance: 'Rettungsdienst in neue AAO ab Wahrscheinlichkeit (%)',
+    };
+    const settings = Object.assign({}, DEFAULTS);
+    try {
+        const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+        Object.keys(DEFAULTS).forEach(key => {
+            if (typeof saved[key] === typeof DEFAULTS[key]) settings[key] = saved[key];
+        });
+    } catch (e) {
+        /* kaputte Einstellungen -> Standard */
+    }
+
+    function toggleSettings(panel) {
+        const open = document.getElementById('lsshelper-settings');
+        if (open) return open.remove();
+        const box = document.createElement('div');
+        box.id = 'lsshelper-settings';
+        Object.keys(DEFAULTS).forEach(key => {
+            const row = document.createElement('label');
+            const input = document.createElement('input');
+            input.dataset.key = key;
+            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : 'color';
+            if (input.type === 'checkbox') input.checked = settings[key];
+            else input.value = settings[key];
+            row.append(input, ` ${SETTINGS_LABELS[key]}`);
+            box.append(row);
+        });
+        const button = (text, cls, onClick) => {
+            const btn = document.createElement('a');
+            btn.href = '#';
+            btn.className = `btn btn-xs ${cls}`;
+            btn.textContent = text;
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                onClick();
+                location.reload();
+            });
+            return btn;
+        };
+        box.append(
+            button('Speichern', 'btn-success', () => {
+                const values = {};
+                box.querySelectorAll('input').forEach(input => {
+                    values[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
+                });
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify(values));
+            }),
+            ' ',
+            button('Standard wiederherstellen', 'btn-default', () => localStorage.removeItem(SETTINGS_KEY))
+        );
+        panel.after(box);
+    }
 
     /* ------------------------------------------------------------------ *
      * Kern: Einsatzdaten (einsaetze.json), einmal geladen und geteilt
@@ -427,7 +509,7 @@
 
     // Sucht pro Bedarf die AAO, die ausschließlich passende Fahrzeuge alarmiert
     function resolveDemands(demands, aaos, parsedAaos) {
-        return demands.map(({ demand, label, need }) => {
+        return demands.map(({ demand, label, need, present }) => {
             let candidates = [];
             if (demand) {
                 candidates = parsedAaos
@@ -448,7 +530,7 @@
                 const best = fitting.length ? Math.max(...pool.map(c => c.amount)) : Math.min(...pool.map(c => c.amount));
                 hits = pool.filter(c => c.amount === best);
             }
-            return { label, need, hits: hits.map(h => ({ aao: h.aao, clicks: Math.ceil(need / h.amount) })) };
+            return { label, need, present, hits: hits.map(h => ({ aao: h.aao, clicks: Math.ceil(need / h.amount) })) };
         });
     }
 
@@ -467,7 +549,7 @@
     }
 
     function openTab(tab) {
-        if (tab && !tab.parentElement.classList.contains('active')) tab.click();
+        if (settings.openTab && tab && !tab.parentElement.classList.contains('active')) tab.click();
     }
 
     function addStyles() {
@@ -476,16 +558,19 @@
         style.id = 'lsshelper-style';
         style.textContent = `
             /* weißer + schwarzer Ring um die Signalfarbe, damit es auf jeder AAO-Farbe auffällt */
-            .lsshelper-name, .lsshelper-req { position: relative; z-index: 5; animation: lsshelper-pulse 1s ease-in-out infinite alternate; }
-            .lsshelper-name { --lsshelper-color: #ff00d4; }
-            .lsshelper-req { --lsshelper-color: #00e5ff; }
+            .lsshelper-name, .lsshelper-req { position: relative; z-index: 5; box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--lsshelper-color), 0 0 0 7px #000; ${settings.pulse ? 'animation: lsshelper-pulse 1s ease-in-out infinite alternate;' : ''} }
+            .lsshelper-name { --lsshelper-color: ${settings.colorName}; }
+            .lsshelper-req { --lsshelper-color: ${settings.colorVehicles}; }
+            #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
+            #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
+            #lsshelper-settings input[type="number"] { width: 60px; color: #000; }
             @keyframes lsshelper-pulse {
                 from { box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--lsshelper-color), 0 0 0 7px #000; }
                 to { box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--lsshelper-color), 0 0 0 7px #000, 0 0 14px 9px var(--lsshelper-color); }
             }
-            .lsshelper-badge { background: #000; color: #00e5ff; border: 1px solid #fff; border-radius: 8px; padding: 0 5px; margin-right: 4px; font-weight: bold; }
+            .lsshelper-badge { background: #000; color: ${settings.colorVehicles}; border: 1px solid #fff; border-radius: 8px; padding: 0 5px; margin-right: 4px; font-weight: bold; }
             .lsshelper-filled { box-shadow: 0 0 0 3px #ff00d4 !important; }
-            .lsshelper-tab { box-shadow: inset 0 -4px 0 #ff00d4 !important; }
+            .lsshelper-tab { box-shadow: inset 0 -4px 0 ${settings.colorName} !important; }
             #lsshelper-panel { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-report { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; max-height: 300px; overflow-y: auto; }
             .lsshelper-report-row { padding: 2px 0; border-top: 1px solid rgba(128, 128, 128, 0.3); }
@@ -505,6 +590,7 @@
         const head = document.createElement('b');
         head.textContent = headline;
         panel.append(head);
+        if (!settings.showList) items = items.filter(text => !/^[✓✗●]/.test(text) || /^✗/.test(text));
         if (items.length) panel.append(document.createElement('br'));
         items.forEach(text => {
             const item = document.createElement('span');
@@ -512,15 +598,23 @@
             item.textContent = text;
             panel.append(item);
         });
-        const audit = document.createElement('a');
-        audit.className = 'btn btn-xs btn-default pull-right';
-        audit.href = '#';
-        audit.textContent = 'AAOs prüfen';
-        audit.addEventListener('click', e => {
-            e.preventDefault();
-            aaoAudit().catch(err => console.error('[LSS Helper] aaoAudit', err));
-        });
-        panel.prepend(audit);
+        const buttons = document.createElement('span');
+        buttons.className = 'pull-right';
+        const button = (text, title, onClick) => {
+            const btn = document.createElement('a');
+            btn.className = 'btn btn-xs btn-default';
+            btn.href = '#';
+            btn.textContent = text;
+            btn.title = title;
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                onClick();
+            });
+            buttons.append(btn, ' ');
+        };
+        if (settings.auditButton) button('AAOs prüfen', 'Alle AAOs gegen die Spieldaten abgleichen', () => aaoAudit().catch(err => console.error('[LSS Helper] aaoAudit', err)));
+        button('⚙', 'LSS Helper Einstellungen', () => toggleSettings(panel));
+        panel.prepend(buttons);
     }
 
     function markDemands(container, aaos, demands, infos, headline) {
@@ -529,17 +623,47 @@
         log('AAO-Inhalte', parsed);
         // Eine AAO kann mehrere Bedarfe decken – dann zählt die höchste Klickzahl
         const clicksByAao = new Map();
-        const items = resolveDemands(demands, aaos, parsed).map(r => {
+        const open = demands.filter(d => d.need > 0);
+        const items = resolveDemands(open, aaos, parsed).map(r => {
             r.hits.forEach(h => clicksByAao.set(h.aao, Math.max(h.clicks, clicksByAao.get(h.aao) || 0)));
-            return `${r.hits.length ? '✓' : '✗'} ${r.need}× ${r.label}`;
+            return `${r.hits.length ? '✓' : '✗'} ${r.need}× ${r.label}${r.present ? ` (${r.present} schon alarmiert)` : ''}`;
         });
+        demands.filter(d => d.need <= 0).forEach(d => items.push(`● ${d.label}: schon alarmiert`));
         let firstTab = null;
-        clicksByAao.forEach((clicks, aao) => {
-            const tab = mark(aao, 'lsshelper-req', `${clicks}×`);
-            firstTab = firstTab || tab;
-        });
+        if (settings.markVehicles) {
+            clicksByAao.forEach((clicks, aao) => {
+                const tab = mark(aao, 'lsshelper-req', `${clicks}×`);
+                firstTab = firstTab || tab;
+            });
+        }
         openTab(firstTab);
+        if (demands.length && !open.length) headline = 'LSS Helper: Alles Nötige ist bereits alarmiert.';
         renderPanel(container, headline, items.concat(infos));
+    }
+
+    // Fahrzeugtypen, die schon auf Anfahrt bzw. vor Ort sind
+    function presentVehicles() {
+        const types = selector =>
+            Array.from(document.querySelectorAll(selector))
+                .map(row => {
+                    const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
+                    return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
+                })
+                .filter(type => !isNaN(type));
+        return { driving: types('#mission_vehicle_driving tbody tr'), atScene: types('#mission_vehicle_at_mission tbody tr') };
+    }
+
+    // Zieht bereits alarmierte Fahrzeuge vom Bedarf ab. scope 'all' = Anfahrt + vor Ort, 'driving' = nur Anfahrt
+    // (was das Spiel als fehlend meldet, berücksichtigt die Fahrzeuge vor Ort schon selbst).
+    function applyPresent(demands, present, defaultScope) {
+        if (!settings.subtractPresent) return;
+        demands.forEach(d => {
+            if (!d.demand) return;
+            const pool = (d.scope || defaultScope) === 'all' ? present.driving.concat(present.atScene) : present.driving;
+            const have = Math.min(d.need, pool.filter(type => d.demand.types.includes(type)).length);
+            d.present = have;
+            d.need -= have;
+        });
     }
 
     async function aaoHighlight() {
@@ -554,6 +678,9 @@
         const missing = parseMissingText();
         const patientNeeds = parsePatientNeeds();
         const isFollowUp = missing.length || Object.keys(patientNeeds).length;
+        const present = presentVehicles();
+        // Einsatz wurde schon bearbeitet: nicht noch einmal die ganze AAO vorschlagen, nur den Rest
+        const dispatched = settings.subtractPresent && present.driving.length + present.atScene.length > 0;
         const showName = byName => {
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
             renderPanel(container, `LSS Helper: AAO „${byName[0].textContent.trim()}“ passt zum Einsatz.`, []);
@@ -564,20 +691,21 @@
         if (/übergabe/i.test(title) || (!type && patientCount && !missing.length)) {
             const medical = MEDICAL.default;
             const demands = [];
-            if (patientCount) demands.push({ demand: medical.transport, label: 'RTW (1 pro Patient)', need: patientCount });
+            if (patientCount) demands.push({ demand: medical.transport, label: 'RTW (1 pro Patient)', need: patientCount, scope: 'all' });
             ['nef', 'rth', 'lna', 'orgl'].forEach(key => {
                 if (patientNeeds[key]) demands.push({ demand: medical[key], label: medical[key].label, need: patientNeeds[key] });
             });
             // Bei mehr als 5 bzw. 10 Patienten verlangt das Spiel LNA bzw. OrgL
-            if (patientCount >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1 });
-            if (patientCount >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1 });
+            if (patientCount >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1, scope: 'all' });
+            if (patientCount >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1, scope: 'all' });
+            applyPresent(demands, present, 'driving');
             const infos = patientCount ? [`ℹ Patienten: ${patientCount}`] : ['ℹ Keine Patienten im Einsatzfenster erkannt'];
             markDemands(container, aaos, demands, infos, 'LSS Helper: Übergabeort – benötigter Rettungsdienst (Zahl an der AAO = so oft klicken):');
             return;
         }
 
         // 1) AAO mit dem Namen des Einsatzes (ohne Einsatzdaten, sofort)
-        if (!isFollowUp) {
+        if (settings.markName && !isFollowUp && !dispatched) {
             const byName = findByName(aaos, [title]);
             if (byName.length) return showName(byName);
         }
@@ -585,7 +713,7 @@
         const missions = type ? await getMissions() : {};
         const mission = type ? missions[type] || missions[type.split(/[-/]/)[0]] : null;
         const medical = medicalFor(mission);
-        log('Einsatz', type, title, mission);
+        log('Einsatz', type, title, mission, present);
         const demands = [];
         const infos = [];
 
@@ -604,6 +732,7 @@
             Object.entries(patientNeeds).forEach(([key, need]) => {
                 if (medical[key]) demands.push({ demand: medical[key], label: medical[key].label, need });
             });
+            applyPresent(demands, present, 'driving');
             markDemands(container, aaos, demands, infos, 'LSS Helper: Nachalarmierung – fehlende Fahrzeuge (Zahl an der AAO = so oft klicken):');
             return;
         }
@@ -612,20 +741,28 @@
             renderPanel(container, 'LSS Helper: Keine passende AAO und keine Einsatzdaten gefunden.', []);
             return;
         }
-        const byName = findByName(aaos, [mission.n]);
-        if (byName.length) return showName(byName);
+        const byName = findByName(aaos, [title, mission.n]);
+        if (settings.markName && !dispatched && byName.length) return showName(byName);
 
         // 3) Fahrzeuganforderungen des Einsatztyps
-        const needs = missionDemands(mission, document.querySelectorAll('.mission_patient').length);
-        markDemands(container, aaos, needs.demands, needs.infos, 'LSS Helper: Keine AAO mit Einsatznamen – benötigte Fahrzeuge (Zahl an der AAO = so oft klicken):');
+        const needs = missionDemands(mission, patientCount);
+        applyPresent(needs.demands, present, 'all');
+        const headline = dispatched
+            ? 'LSS Helper: Noch benötigte Fahrzeuge – bereits alarmierte sind abgezogen (Zahl an der AAO = so oft klicken):'
+            : byName.length
+              ? 'LSS Helper: Benötigte Fahrzeuge (Zahl an der AAO = so oft klicken):'
+              : 'LSS Helper: Keine AAO mit Einsatznamen – benötigte Fahrzeuge (Zahl an der AAO = so oft klicken):';
+        markDemands(container, aaos, needs.demands, needs.infos, headline);
 
-        const create = document.createElement('a');
-        create.className = 'btn btn-xs btn-primary';
-        create.href = `/aaos/new?${AAO_PARAM}=${encodeURIComponent(type)}`;
-        create.target = '_blank';
-        create.textContent = `AAO „${mission.n}“ anlegen`;
-        create.addEventListener('mousedown', () => saveCategoryStyles(container));
-        document.getElementById('lsshelper-panel').append(document.createElement('br'), create);
+        if (settings.createButton && !byName.length) {
+            const create = document.createElement('a');
+            create.className = 'btn btn-xs btn-primary';
+            create.href = `/aaos/new?${AAO_PARAM}=${encodeURIComponent(type)}`;
+            create.target = '_blank';
+            create.textContent = `AAO „${mission.n}“ anlegen`;
+            create.addEventListener('mousedown', () => saveCategoryStyles(container));
+            document.getElementById('lsshelper-panel').append(document.createElement('br'), create);
+        }
     }
 
     // Kompletter Bedarf eines Einsatztyps, beschränkt auf Fahrzeuge, die dort hinkommen
@@ -778,8 +915,6 @@
      * ------------------------------------------------------------------ */
 
     const AAO_PARAM = 'lsshelper_mission';
-    // Rettungsdienst erst ab dieser Wahrscheinlichkeit in die AAO aufnehmen
-    const AAO_MIN_CHANCE = 50;
 
     // Einsatzkategorie -> Stichworte, nach denen in den eigenen AAO-Kategorien gesucht wird
     const CATEGORY_WORDS = {
@@ -897,7 +1032,7 @@
         const amounts = new Map();
         const items = [];
         missionDemands(mission, 0).demands.forEach(({ demand, label, need, chance }) => {
-            if (chance < AAO_MIN_CHANCE) return items.push(`– ${need}× ${label} (zu selten, nicht eingetragen)`);
+            if (chance < settings.minChance) return items.push(`– ${need}× ${label} (zu selten, nicht eingetragen)`);
             const input = findAaoField(form, demand);
             if (!input) return items.push(`✗ ${need}× ${label} (kein Feld gefunden – bitte von Hand)`);
             // Mehrere Bedarfe im selben Feld (z. B. RTH für Notarzt und Transport): der größte zählt

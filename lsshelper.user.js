@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.9.0
+// @version      0.10.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -29,6 +29,7 @@
         markName: true,
         markVehicles: true,
         subtractPresent: true,
+        countForeign: true,
         showList: true,
         openTab: true,
         createButton: true,
@@ -41,7 +42,8 @@
     const SETTINGS_LABELS = {
         markName: 'AAO mit Einsatznamen markieren',
         markVehicles: 'Fahrzeug-AAOs markieren',
-        subtractPresent: 'Bereits alarmierte Fahrzeuge abziehen',
+        subtractPresent: 'Bereits alarmierte und angehakte Fahrzeuge abziehen',
+        countForeign: 'Dabei Fahrzeuge anderer Spieler mitzählen',
         showList: 'Fahrzeugliste in der Leiste anzeigen',
         openTab: 'AAO-Tab automatisch öffnen',
         createButton: 'Button „AAO anlegen“ anzeigen',
@@ -549,7 +551,7 @@
     }
 
     function openTab(tab) {
-        if (settings.openTab && tab && !tab.parentElement.classList.contains('active')) tab.click();
+        if (allowTabSwitch && settings.openTab && tab && !tab.parentElement.classList.contains('active')) tab.click();
     }
 
     function addStyles() {
@@ -626,9 +628,9 @@
         const open = demands.filter(d => d.need > 0);
         const items = resolveDemands(open, aaos, parsed).map(r => {
             r.hits.forEach(h => clicksByAao.set(h.aao, Math.max(h.clicks, clicksByAao.get(h.aao) || 0)));
-            return `${r.hits.length ? '✓' : '✗'} ${r.need}× ${r.label}${r.present ? ` (${r.present} schon alarmiert)` : ''}`;
+            return `${r.hits.length ? '✓' : '✗'} ${r.need}× ${r.label}${r.present ? ` (${r.present} schon alarmiert/angehakt)` : ''}`;
         });
-        demands.filter(d => d.need <= 0).forEach(d => items.push(`● ${d.label}: schon alarmiert`));
+        demands.filter(d => d.need <= 0).forEach(d => items.push(`● ${d.label}: schon alarmiert/angehakt`));
         let firstTab = null;
         if (settings.markVehicles) {
             clicksByAao.forEach((clicks, aao) => {
@@ -637,33 +639,75 @@
             });
         }
         openTab(firstTab);
-        if (demands.length && !open.length) headline = 'LSS Helper: Alles Nötige ist bereits alarmiert.';
+        if (demands.length && !open.length) headline = 'LSS Helper: Alles Nötige ist bereits alarmiert oder angehakt.';
         renderPanel(container, headline, items.concat(infos));
     }
 
-    // Fahrzeugtypen, die schon auf Anfahrt bzw. vor Ort sind
+    // Fahrzeugtypen, die schon auf Anfahrt bzw. vor Ort sind oder in der Fahrzeugliste angehakt wurden
     function presentVehicles() {
-        const types = selector =>
+        const ownId = String(window.user_id);
+        const isForeign = row => {
+            const owner = row.querySelector('a[href^="/profile/"]');
+            return !!owner && owner.getAttribute('href').split('/')[2] !== ownId;
+        };
+        const types = (selector, skipForeign) =>
             Array.from(document.querySelectorAll(selector))
+                .filter(row => !(skipForeign && isForeign(row)))
                 .map(row => {
                     const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
                     return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
                 })
                 .filter(type => !isNaN(type));
-        return { driving: types('#mission_vehicle_driving tbody tr'), atScene: types('#mission_vehicle_at_mission tbody tr') };
+        return {
+            driving: types('#mission_vehicle_driving tbody tr', !settings.countForeign),
+            atScene: types('#mission_vehicle_at_mission tbody tr', !settings.countForeign),
+            selected: types('#vehicle_show_table_body_all .vehicle_checkbox:checked, #occupied .vehicle_checkbox:checked', false),
+        };
     }
 
-    // Zieht bereits alarmierte Fahrzeuge vom Bedarf ab. scope 'all' = Anfahrt + vor Ort, 'driving' = nur Anfahrt
+    // Zieht bereits alarmierte und angehakte Fahrzeuge vom Bedarf ab. scope 'all' = Anfahrt + vor Ort, 'driving' = nur Anfahrt
     // (was das Spiel als fehlend meldet, berücksichtigt die Fahrzeuge vor Ort schon selbst).
     function applyPresent(demands, present, defaultScope) {
         if (!settings.subtractPresent) return;
         demands.forEach(d => {
             if (!d.demand) return;
-            const pool = (d.scope || defaultScope) === 'all' ? present.driving.concat(present.atScene) : present.driving;
+            const pool = present.selected.concat(present.driving, (d.scope || defaultScope) === 'all' ? present.atScene : []);
             const have = Math.min(d.need, pool.filter(type => d.demand.types.includes(type)).length);
             d.present = have;
             d.need -= have;
         });
+    }
+
+    // Tab nur beim ersten Durchlauf wechseln, nicht bei jeder Aktualisierung
+    let allowTabSwitch = true;
+    let liveSignature = null;
+
+    function clearMarks() {
+        document.querySelectorAll('.lsshelper-badge').forEach(badge => badge.remove());
+        document.querySelectorAll('.lsshelper-name, .lsshelper-req, .lsshelper-tab').forEach(el => el.classList.remove('lsshelper-name', 'lsshelper-req', 'lsshelper-tab'));
+    }
+
+    // Einsatzfenster: einmal markieren, danach bei jeder Änderung der Fahrzeugauswahl neu rechnen
+    async function aaoHighlightLive() {
+        await aaoHighlight();
+        allowTabSwitch = false;
+        if (!settings.subtractPresent || !document.getElementById('mission-aao-group')) return;
+        const signature = () => presentVehicles().selected.sort().join(',');
+        liveSignature = signature();
+        const refresh = () => {
+            const current = signature();
+            if (current === liveSignature) return;
+            liveSignature = current;
+            clearMarks();
+            aaoHighlight().catch(e => console.error('[LSS Helper] aaoHighlight', e));
+        };
+        const schedule = e => {
+            if (!e.target.closest || !e.target.closest('a.aao, a.vehicle_group, .vehicle_checkbox, #vehicle_show_table_all, #occupied')) return;
+            // AAOs wählen ihre Fahrzeuge teils verzögert aus
+            [250, 1200].forEach(delay => setTimeout(refresh, delay));
+        };
+        document.addEventListener('click', schedule);
+        document.addEventListener('change', schedule);
     }
 
     async function aaoHighlight() {
@@ -680,7 +724,7 @@
         const isFollowUp = missing.length || Object.keys(patientNeeds).length;
         const present = presentVehicles();
         // Einsatz wurde schon bearbeitet: nicht noch einmal die ganze AAO vorschlagen, nur den Rest
-        const dispatched = settings.subtractPresent && present.driving.length + present.atScene.length > 0;
+        const dispatched = settings.subtractPresent && present.driving.length + present.atScene.length + present.selected.length > 0;
         const showName = byName => {
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
             renderPanel(container, `LSS Helper: AAO „${byName[0].textContent.trim()}“ passt zum Einsatz.`, []);
@@ -748,7 +792,7 @@
         const needs = missionDemands(mission, patientCount);
         applyPresent(needs.demands, present, 'all');
         const headline = dispatched
-            ? 'LSS Helper: Noch benötigte Fahrzeuge – bereits alarmierte sind abgezogen (Zahl an der AAO = so oft klicken):'
+            ? 'LSS Helper: Noch benötigte Fahrzeuge – alarmierte und angehakte sind abgezogen (Zahl an der AAO = so oft klicken):'
             : byName.length
               ? 'LSS Helper: Benötigte Fahrzeuge (Zahl an der AAO = so oft klicken):'
               : 'LSS Helper: Keine AAO mit Einsatznamen – benötigte Fahrzeuge (Zahl an der AAO = so oft klicken):';
@@ -1076,11 +1120,11 @@
     const FEATURES = [
         // Einsatzdaten im Hauptfenster vorladen, damit Einsatzfenster nicht warten müssen
         { name: 'preloadMissions', match: /^\/$/, run: getMissions },
-        { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlight },
+        { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, rerun: () => (clearMarks(), aaoHighlight()) };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

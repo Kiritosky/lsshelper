@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.10.0
+// @version      0.10.1
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -804,7 +804,15 @@
             create.href = `/aaos/new?${AAO_PARAM}=${encodeURIComponent(type)}`;
             create.target = '_blank';
             create.textContent = `AAO „${mission.n}“ anlegen`;
-            create.addEventListener('mousedown', () => saveCategoryStyles(container));
+            // Einsatzdaten gleich mitgeben, damit das Formular nicht erst die ganze Einsatzliste laden muss
+            create.addEventListener('mousedown', () => {
+                saveCategoryStyles(container);
+                try {
+                    localStorage.setItem(DRAFT_KEY, JSON.stringify({ type, mission }));
+                } catch (e) {
+                    log('Entwurf konnte nicht gespeichert werden', e);
+                }
+            });
             document.getElementById('lsshelper-panel').append(document.createElement('br'), create);
         }
     }
@@ -959,6 +967,7 @@
      * ------------------------------------------------------------------ */
 
     const AAO_PARAM = 'lsshelper_mission';
+    const DRAFT_KEY = 'lsshelper_aao_draft';
 
     // Einsatzkategorie -> Stichworte, nach denen in den eigenen AAO-Kategorien gesucht wird
     const CATEGORY_WORDS = {
@@ -1059,8 +1068,17 @@
         const caption = document.querySelector('input[name="aao[caption]"]');
         if (!type || !caption) return;
         const form = caption.form;
-        const missions = await getMissions();
-        const mission = missions[type] || missions[type.split(/[-/]/)[0]];
+        let mission = null;
+        try {
+            const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+            if (draft && draft.type === type) mission = draft.mission;
+        } catch (e) {
+            /* kaputter Entwurf */
+        }
+        if (!mission) {
+            const missions = await getMissions();
+            mission = missions[type] || missions[type.split(/[-/]/)[0]];
+        }
         if (!mission) return;
         addStyles();
 

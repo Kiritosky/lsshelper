@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.11.0
+// @version      0.11.1
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1050,7 +1050,9 @@
                 const option = Array.from(field.options).find(o => btnClass && (o.value === btnClass || o.value === btnClass.replace('btn-', '')));
                 if (option) setValue(field, option.value);
             } else {
-                setValue(field, isText ? text : background);
+                // Das Spiel erwartet den Farbcode ohne "#"; nur echte Farbwähler brauchen es
+                const color = isText ? text : background;
+                setValue(field, field.type === 'color' ? color : color.replace('#', ''));
             }
         });
         return true;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.12.0
+// @version      0.13.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1176,6 +1176,77 @@
 
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+    // Fahrzeugtyp -> benötigte Lehrgänge (Bezeichnung wie in der Personalliste).
+    // ALL = die ganze Besatzung braucht den Lehrgang, Zahl = so viele Plätze brauchen ihn.
+    const ALL = 'all';
+    const TRAINING = {};
+    const training = (types, ...required) => types.forEach(type => (TRAINING[type] = required));
+    training([12], ['GW-Messtechnik', ALL]);
+    training([27, 77], ['GW-Gefahrgut', ALL]);
+    training([29, 31], ['Notarzt', ALL]);
+    training([73, 74, 149], ['Notarzt', 1]);
+    training([33], ['GW-Höhenrettung', ALL]);
+    training([34, 78], ['ELW 2', ALL]);
+    training([35], ['Zugführer (leBefKw)', ALL]);
+    training([40], ['Zugtrupp', ALL]);
+    training([42, 45], ['Fachgruppe Räumen', ALL]);
+    training([46], ['Wechsellader', ALL]);
+    training([51], ['Hundertschaftsführer (FüKw)', ALL]);
+    training([54], ['Dekon-P', ALL]);
+    training([55], ['LNA', ALL]);
+    training([56], ['OrgL', ALL]);
+    training([57], ['Feuerwehrkran', ALL]);
+    training([59], ['Einsatzleitung (SEG)', ALL]);
+    training([60], ['GW-San', ALL]);
+    training([61], ['Polizeihubschrauber', ALL]);
+    training([63, 69], ['GW-Taucher', ALL]);
+    training([64, 66, 67, 68, 70, 71], ['GW-Wasserrettung', ALL]);
+    training([72], ['Wasserwerfer', ALL]);
+    training([75], ['Flugfeldlöschfahrzeug', ALL]);
+    training([76], ['Rettungstreppe', ALL]);
+    training([79, 80], ['SEK', ALL]);
+    training([81, 82], ['MEK', ALL]);
+    training([83, 84, 85, 86], ['Werkfeuerwehr', ALL]);
+    training([91, 153], ['Rettungshundeführer', ALL]);
+    training([92], ['Rettungshundeführer (THW)', ALL]);
+    training([94], ['Hundeführer (Schutzhund)', ALL]);
+    training([95], ['Motorradstaffel', ALL]);
+    training([96], ['Brandbekämpfung', ALL]);
+    training([97], ['Intensivpflege', 2], ['Notarzt', 1]);
+    training([98], ['Kriminalpolizist', ALL]);
+    training([100], ['Fachgruppe Wasserschaden/Pumpen', ALL]);
+    training([101, 102], ['Fachgruppe Wasserschaden/Pumpen', 1]);
+    training([103], ['Dienstgruppenleitung', 1]);
+    training([109], ['FGr SB', ALL]);
+    training([112], ['FGr E', 1]);
+    training([113, 180], ['NEA200', 1]);
+    training([125], ['Tr UL', ALL]);
+    training([126], ['Drohnen-Schulung', 4]);
+    training([127], ['Drohnenoperator', ALL]);
+    training([128], ['Drohnen-Schulung', ALL]);
+    training([129], ['Drohnen-Schulung', ALL], ['ELW 2', ALL]);
+    training([130, 133], ['Betreuungshelfer', 1], ['Verpflegungshelfer', 2]);
+    training([131], ['Betreuungshelfer', ALL]);
+    training([134], ['Reiterstaffel', 2]);
+    training([138, 139], ['Feuerwehr-Verpflegungseinheit', 1], ['Verpflegungshelfer', 2]);
+    training([140], ['Feuerwehr-Verpflegungseinheit', ALL]);
+    training([144, 145, 147, 148], ['Fachzug Führung und Kommunikation', ALL]);
+    training([151], ['EL Bergrettung', ALL]);
+    training([156], ['Polizeihubschrauber', 1], ['Windenoperator', 1]);
+    training([157], ['Windenoperator', 1], ['Notarzt', 1]);
+    training([158], ['Höhenretter', ALL]);
+    training([159], ['Seenotretter', ALL]);
+    training([161], ['Hubschrauberpilot (Seenotrettung)', 1], ['Windenoperator', 1], ['Notfallsanitäter mit Wasserrettungsausbildung', 1]);
+    training([162, 163], ['Bahnrettung', ALL]);
+    training([165], ['Lautsprecheroperator', ALL]);
+    training([171], ['SEG - Technik und Sicherheit', ALL]);
+    training([172, 173], ['SEG - Technik und Sicherheit', 1]);
+    training([176], ['Logistik-Verpflegung', 1], ['Verpflegungshelfer', 2]);
+    training([177], ['Logistik-Verpflegung', ALL]);
+    training([181], ['Fachgruppe Brückenbau', ALL]);
+    training([182], ['Kranführer', ALL]);
+    training([184], ['Autobahnpolizei', ALL]);
+
     // Liest aus dem Bearbeiten-Formular eines Fahrzeugs das Feld "maximale Besatzung" samt erlaubtem Bereich
     async function loadCrewForm(id) {
         const html = await (await fetch(`/vehicles/${id}/edit`, { credentials: 'same-origin' })).text();
@@ -1191,24 +1262,65 @@
 
     // Verteilt das Personal: erst bekommt jedes Fahrzeug seine Mindestbesatzung (in Listenreihenfolge),
     // der Rest wird reihum verteilt, bis alle voll sind oder das Personal aufgebraucht ist.
-    function planCrew(vehicles, personnel) {
-        let remaining = personnel;
+    // Fahrzeuge mit Lehrgang bekommen nur Sitze, für die es ausgebildetes Personal gibt
+    // (2 Kriminalpolizisten und 2 Zivilstreifenwagen ergeben 1 + 1, nicht 2 + 2).
+    function planCrew(vehicles, persons) {
+        // n freie Personen mit allen genannten Lehrgängen; wenig Ausgebildete zuerst, damit Spezialisten frei bleiben
+        const pick = (n, names, taken = []) => {
+            const pool = persons
+                .filter(p => !p.used && !taken.includes(p) && names.every(name => p.edu.has(name)))
+                .sort((a, b) => a.edu.size - b.edu.size);
+            return pool.length >= n ? pool.slice(0, n) : null;
+        };
         vehicles.forEach(v => {
-            v.staffed = v.max > 0 && remaining >= v.min;
+            const required = TRAINING[v.type] || [];
+            v.all = required.filter(r => r[1] === ALL).map(r => normalize(r[0]));
+            v.partial = required.filter(r => r[1] !== ALL).map(r => [normalize(r[0]), r[1]]);
+            v.training = required.map(r => (r[1] === ALL ? r[0] : `${r[1]}× ${r[0]}`)).join(', ');
             v.next = v.min;
-            if (v.staffed) remaining -= v.min;
+            v.staffed = false;
         });
-        let open = vehicles.filter(v => v.staffed && v.next < v.max);
-        while (remaining > 0 && open.length) {
-            open.forEach(v => {
-                if (remaining > 0) {
-                    v.next++;
-                    remaining--;
-                }
+        // Mindestbesatzung: erst Fahrzeuge, bei denen alle ausgebildet sein müssen, dann die mit einzelnen Pflichtplätzen, dann der Rest
+        const rank = v => (v.all.length ? 0 : v.partial.length ? 1 : 2);
+        vehicles
+            .filter(v => v.max > 0)
+            .sort((a, b) => rank(a) - rank(b))
+            .forEach(v => {
+                const crew = [];
+                const add = (n, names) => {
+                    const found = n > 0 ? pick(n, names, crew) : [];
+                    if (found) crew.push(...found);
+                    return !!found;
+                };
+                const ok = v.partial.every(([name, n]) => add(n, v.all.concat(name))) && add(Math.max(0, v.min - crew.length), v.all);
+                if (!ok || crew.length > v.max) return;
+                crew.forEach(p => (p.used = true));
+                v.staffed = true;
+                v.next = Math.max(v.min, crew.length);
             });
-            open = open.filter(v => v.next < v.max);
+        // Rest reihum verteilen
+        let progress = true;
+        while (progress) {
+            progress = false;
+            vehicles.forEach(v => {
+                if (!v.staffed || v.next >= v.max) return;
+                const extra = pick(1, v.all);
+                if (!extra) return;
+                extra[0].used = true;
+                v.next++;
+                progress = true;
+            });
         }
-        return remaining;
+        return persons.filter(p => !p.used).length;
+    }
+
+    // Personal einer Wache mit seinen Lehrgängen: [{ edu: Set, used: false }]
+    async function loadPersonnel(buildingId) {
+        const html = await (await fetch(`/buildings/${buildingId}/personals`, { credentials: 'same-origin' })).text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        return Array.from(doc.querySelectorAll('#personal_table tbody tr'))
+            .filter(row => row.children.length > 2)
+            .map(row => ({ edu: new Set(row.children[2].textContent.split(',').map(normalize).filter(Boolean)), used: false }));
     }
 
     async function saveCrew(vehicle) {
@@ -1259,26 +1371,40 @@
                     const id = (link.getAttribute('href').match(/^\/vehicles\/(\d+)$/) || [])[1];
                     if (id && !seen.has(id)) {
                         seen.add(id);
-                        vehicles.push({ id, name: link.textContent.trim() || `Fahrzeug ${id}` });
+                        const typed = link.closest('tr').querySelector('[vehicle_type_id]');
+                        vehicles.push({ id, name: link.textContent.trim() || `Fahrzeug ${id}`, type: typed ? parseInt(typed.getAttribute('vehicle_type_id')) : null });
                     }
                 });
+                // Personal mit Lehrgängen; lässt sich die Liste nicht lesen, wird nur nach Köpfen gerechnet
+                let persons = await loadPersonnel(buildingId).catch(() => []);
+                const knowsTraining = persons.length > 0;
+                if (!knowsTraining) persons = Array.from({ length: personnel }, () => ({ edu: new Set(), used: false }));
                 const status = line(`Lese ${vehicles.length} Fahrzeuge …`);
                 const usable = [];
                 const skipped = [];
                 for (const vehicle of vehicles) {
                     const crew = await loadCrewForm(vehicle.id);
+                    if (crew && vehicle.type === null) {
+                        const api = await (await fetch(`/api/vehicles/${vehicle.id}`, { credentials: 'same-origin' })).json().catch(() => ({}));
+                        vehicle.type = typeof api.vehicle_type === 'number' ? api.vehicle_type : null;
+                    }
                     if (crew) usable.push(Object.assign(vehicle, crew));
                     else skipped.push(vehicle.name);
                     status.textContent = `Lese Fahrzeuge … ${usable.length + skipped.length}/${vehicles.length}`;
                     await sleep(150);
                 }
 
-                const left = planCrew(usable, personnel);
+                // Ohne lesbare Personalliste gelten Lehrgänge als erfüllt, sonst würden alle Spezialfahrzeuge leer ausgehen
+                if (!knowsTraining) usable.forEach(v => (v.type = null));
+                const left = planCrew(usable, persons);
                 const seats = usable.reduce((sum, v) => sum + v.max, 0);
-                status.textContent = `Personal: ${personnel} · Sitzplätze: ${seats} · ${left > 0 ? `${left} Personen bleiben übrig (alle Fahrzeuge voll)` : 'alles Personal verteilt'}`;
+                status.textContent = `Personal: ${persons.length} · Sitzplätze: ${seats} · ${left > 0 ? `${left} Personen ohne Platz (Fahrzeuge voll oder Lehrgang passt nicht)` : 'alles Personal verteilt'}`;
+                if (!knowsTraining) line('⚠ Personalliste nicht lesbar – Lehrgänge wurden nicht geprüft, es wird nur nach Köpfen gerechnet.');
                 usable.forEach(v => {
                     const change = v.next === v.current ? 'bleibt' : `${v.current} → ${v.next}`;
-                    line(`${v.staffed ? '✓' : '✗'} ${v.name}: ${change} (möglich ${v.min}–${v.max})${v.staffed ? '' : ' – kein Personal mehr übrig'}`);
+                    const trained = v.training ? ` · Lehrgang: ${v.training}` : '';
+                    const reason = v.staffed ? '' : v.training ? ' – zu wenig Personal mit diesem Lehrgang' : ' – kein Personal mehr übrig';
+                    line(`${v.staffed ? '✓' : '✗'} ${v.name}: ${change} (möglich ${v.min}–${v.max})${trained}${reason}`);
                 });
                 if (skipped.length) line(`Übersprungen (kein Besatzungsfeld gefunden): ${skipped.join(', ')}`);
 

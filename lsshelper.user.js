@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.4.0
+// @version      0.4.1
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -505,6 +505,7 @@
         create.href = `/aaos/new?${AAO_PARAM}=${encodeURIComponent(type)}`;
         create.target = '_blank';
         create.textContent = `AAO „${mission.n}“ anlegen`;
+        create.addEventListener('mousedown', () => saveCategoryStyles(container));
         document.getElementById('lsshelper-panel').append(document.createElement('br'), create);
     }
 
@@ -560,6 +561,57 @@
         ambulance: /rett|rd\b/,
         fire: /feuer|brand|\bfw\b/,
     };
+
+    const STYLES_KEY = 'lsshelper_aao_styles';
+
+    const toHex = rgb => {
+        const parts = (rgb.match(/\d+/g) || []).slice(0, 3);
+        return parts.length === 3 ? `#${parts.map(p => parseInt(p).toString(16).padStart(2, '0')).join('')}` : '';
+    };
+
+    // Merkt sich pro AAO-Kategorie die dort am häufigsten verwendete Farbe (aus den AAOs im Einsatzfenster)
+    function saveCategoryStyles(container) {
+        const styles = {};
+        container.querySelectorAll('.tab-pane[id^="aao_category_"]').forEach(pane => {
+            const counts = {};
+            pane.querySelectorAll('a.aao').forEach(aao => {
+                const computed = getComputedStyle(aao);
+                const btnClass = (aao.className.match(/\bbtn-(default|primary|success|info|warning|danger)\b/) || [''])[0];
+                const key = [toHex(computed.backgroundColor), toHex(computed.color), btnClass].join('|');
+                counts[key] = (counts[key] || 0) + 1;
+            });
+            const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+            if (best) styles[pane.id.replace('aao_category_', '')] = best.split('|');
+        });
+        try {
+            localStorage.setItem(STYLES_KEY, JSON.stringify(styles));
+        } catch (e) {
+            log('Farben konnten nicht gespeichert werden', e);
+        }
+    }
+
+    // Trägt die Farbe der Kategorie in die Farbfelder des AAO-Formulars ein
+    function applyCategoryStyle(form, categoryId, setValue) {
+        let style;
+        try {
+            style = (JSON.parse(localStorage.getItem(STYLES_KEY) || '{}') || {})[categoryId];
+        } catch (e) {
+            /* kaputter Eintrag */
+        }
+        const fields = Array.from(form.querySelectorAll('input[name*="color"], select[name*="color"]'));
+        if (!style || !fields.length) return false;
+        const [background, text, btnClass] = style;
+        fields.forEach(field => {
+            const isText = /text|font|schrift/.test(field.name);
+            if (field.tagName === 'SELECT') {
+                const option = Array.from(field.options).find(o => btnClass && (o.value === btnClass || o.value === btnClass.replace('btn-', '')));
+                if (option) setValue(field, option.value);
+            } else {
+                setValue(field, isText ? text : background);
+            }
+        });
+        return true;
+    }
 
     function labelOf(input) {
         const label = (input.id && document.querySelector(`label[for="${input.id}"]`)) || input.closest('label') || (input.closest('.form-group, .input-group, tr, div') || document).querySelector('label');
@@ -620,6 +672,7 @@
                 const option = options.find(o => CATEGORY_WORDS[key].test(o.textContent.toLowerCase()));
                 setValue(category, option.value);
                 items.push(`✓ Kategorie: ${option.textContent.trim()}`);
+                items.push(applyCategoryStyle(form, option.value, setValue) ? '✓ Farben aus der Kategorie übernommen' : '✗ Farben: keine für diese Kategorie gefunden – bitte von Hand wählen');
             } else {
                 items.push('✗ Kategorie: keine passende gefunden – bitte von Hand wählen');
             }

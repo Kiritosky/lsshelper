@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.14.0
+// @version      0.15.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1189,7 +1189,8 @@
         .split(',')
         .map(range => (range ? range.split('-').map(Number) : null));
 
-    // Fahrzeugtyp -> Lehrgang -> 0 = die ganze Besatzung braucht ihn, n = so viele Plätze brauchen ihn
+    // Fahrzeugtyp -> Lehrgang -> so viele Ausgebildete braucht das Fahrzeug (0 zählt als 1).
+    // Die übrigen Plätze darf Personal ohne Lehrgang besetzen – ein ELW 2 fährt mit 6 Leuten, wenn einer den Lehrgang hat.
     // prettier-ignore
     const TRAINING = {12:{gw_messtechnik:0},27:{gw_gefahrgut:0},29:{notarzt:0},31:{notarzt:0},33:{gw_hoehenrettung:0},34:{elw2:0},35:{police_einsatzleiter:0},40:{thw_zugtrupp:0},42:{thw_raumen:0},45:{thw_raumen:0},46:{wechsellader:0},51:{police_fukw:0},54:{dekon_p:0},55:{lna:0},56:{orgl:0},57:{fwk:0},59:{seg_elw:0},60:{seg_gw_san:0},61:{polizeihubschrauber:0},63:{gw_taucher:0},64:{gw_wasserrettung:0},66:{gw_wasserrettung:0},67:{gw_wasserrettung:0},68:{gw_wasserrettung:0},69:{gw_taucher:0},70:{gw_wasserrettung:0},71:{gw_wasserrettung:0},72:{police_wasserwerfer:0},73:{notarzt:1},74:{notarzt:1},75:{arff:0},76:{rettungstreppe:0},77:{gw_gefahrgut:0},78:{elw2:0},79:{police_sek:0},80:{police_sek:0},81:{police_mek:0},82:{police_mek:0},83:{werkfeuerwehr:0},84:{werkfeuerwehr:0},85:{werkfeuerwehr:0},86:{werkfeuerwehr:0},91:{seg_rescue_dogs:0},92:{thw_rescue_dogs:0},94:{k9:0},95:{police_motorcycle:0},96:{police_firefighting:0},97:{intensive_care:2,notarzt:1},98:{criminal_investigation:0},100:{water_damage_pump:0},101:{water_damage_pump:1},102:{water_damage_pump:1},103:{police_service_group_leader:1},109:{heavy_rescue:0},112:{thw_energy_supply:1},113:{energy_supply:1},125:{thw_drone:0},126:{fire_drone:4},127:{seg_drone:0},128:{fire_drone:0},129:{fire_drone:0,elw2:0},130:{care_service:1,care_service_equipment:2},131:{care_service:0},133:{care_service:1,care_service_equipment:2},134:{police_horse:2},138:{fire_care_service:1,care_service_equipment:2},139:{fire_care_service:1,care_service_equipment:2},140:{fire_care_service:0},144:{thw_command:0},145:{thw_command:0},147:{thw_command:0},148:{thw_command:0},149:{notarzt:1},151:{mountain_command:0},153:{seg_rescue_dogs:0},155:{mountain_height_rescue:4},156:{polizeihubschrauber:1,police_helicopter_lift:1},157:{rescue_helicopter_lift:1,notarzt:1},158:{mountain_height_rescue:0},159:{coastal_rescue:0},161:{coastal_helicopter:1,coastal_helicopter_lift:1,emergency_paramedic_water_rescue:1},162:{railway_fire:0},163:{railway_fire:0},165:{police_speaker_operator:0},171:{disaster_response_technology:0},172:{disaster_response_technology:1},173:{disaster_response_technology:1},174:{disaster_response_technology:2},175:{disaster_response_technology:2},176:{thw_care_service:1,care_service_equipment:2},177:{thw_care_service:0},180:{energy_supply:1},181:{thw_bridge_construction:0},182:{thw_bridge_construction_crane:0},183:{thw_bridge_construction:6},184:{highway_police:0}};
 
@@ -1226,8 +1227,8 @@
     }
 
     // Plant Sitzlimits und Lehrgangspersonal einer Wache.
-    // Fahrzeuge mit Lehrgang bekommen nur Sitze, für die es ausgebildetes Personal gibt
-    // (2 Kriminalpolizisten und 2 Zivilstreifenwagen ergeben 1 + 1, nicht 2 + 2).
+    // Jedes Fahrzeug mit Lehrgang bekommt zuerst seine Ausgebildeten (v.trained), die restlichen Sitze füllt beliebiges Personal.
+    // Fehlen die Ausgebildeten, gilt das Fahrzeug als nicht besetzbar und nimmt den anderen kein Personal weg.
     function planCrew(vehicles, persons) {
         persons.forEach(p => (p.used = false));
         // n freie Personen mit allen Lehrgängen: erst schon an dieses Fahrzeug Gebundene, dann Freie, dann anderswo Gebundene;
@@ -1240,9 +1241,8 @@
             return pool.length >= n ? pool.slice(0, n) : null;
         };
         vehicles.forEach(v => {
-            const required = Object.entries(TRAINING[v.type] || {});
-            v.all = required.filter(([, n]) => n === 0).map(([key]) => key);
-            v.partial = required.filter(([, n]) => n > 0);
+            v.all = [];
+            v.partial = Object.entries(TRAINING[v.type] || {}).map(([key, n]) => [key, n || 1]);
             v.next = v.min;
             v.staffed = false;
             v.trained = [];
@@ -1369,7 +1369,6 @@
         },
         // Zuweisen und Lösen ist im Spiel derselbe Umschalter – deshalb vorher den aktuellen Stand prüfen
         assign: change => toggleBinding(change, true),
-        unbind: change => toggleBinding(change, false),
     };
 
     async function toggleBinding(change, shouldBeBound) {
@@ -1429,11 +1428,6 @@
                 v.trained.filter(p => !bound.includes(p) && p.id).forEach(person => {
                     changes.push({ kind: 'assign', station, vehicle: v, person, text: `${person.name} → ${v.caption}${person.bound ? ` (bisher ${person.bound})` : ''}` });
                 });
-                if (v.all.length) {
-                    bound.filter(p => !v.trained.includes(p) && p.id).forEach(person => {
-                        changes.push({ kind: 'unbind', station, vehicle: v, person, text: `${person.name} von ${v.caption} lösen (${v.all.every(key => person.edu.has(key)) ? 'wird woanders gebraucht' : 'Lehrgang fehlt'})` });
-                    });
-                }
             });
             await sleep(100);
         }
@@ -1444,7 +1438,7 @@
 
     const DASH_GROUPS = [
         { title: 'Sitzlimits', kinds: ['limit'], button: 'Sitzlimits übernehmen' },
-        { title: 'Lehrgangspersonal', kinds: ['assign', 'unbind'], button: 'Lehrgangspersonal zuweisen' },
+        { title: 'Lehrgangspersonal', kinds: ['assign'], button: 'Lehrgangspersonal zuweisen' },
         { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
     ];
 
@@ -1549,7 +1543,7 @@
         }
     }
 
-    // Knöpfe zum Öffnen: unten links auf der Hauptseite (alle Wachen) und auf jeder Wache (nur diese)
+    // Zum Öffnen: Eintrag im Profilmenü der Hauptseite (alle Wachen) und Knopf auf jeder Wache (nur diese)
     function dashboardButton() {
         if (!settings.crewButton || document.getElementById('lsshelper-dash-open')) return;
         const table = document.getElementById('vehicle_table');
@@ -1567,8 +1561,17 @@
             e.preventDefault();
             openDashboard(buildingId);
         });
-        if (buildingId) table.before(open);
-        else {
+        if (buildingId) return table.before(open);
+        // Hauptseite: Eintrag im Profilmenü direkt unter "Alarm und Ausrückeordnung"
+        const aao = document.querySelector('.dropdown-menu a[href="/aaos"]');
+        if (aao && aao.closest('li')) {
+            const item = document.createElement('li');
+            item.setAttribute('role', 'presentation');
+            open.className = '';
+            open.textContent = 'LSS Helper: Wachen-Dashboard';
+            item.append(open);
+            aao.closest('li').after(item);
+        } else {
             open.classList.add('lsshelper-dash-floating');
             document.body.append(open);
         }

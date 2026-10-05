@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.5.0
+// @version      0.6.0
 // @description  Helfer für das Leitstellenspiel: markiert im Einsatzfenster die passende AAO bzw. die AAOs der (noch) benötigten Fahrzeuge.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -503,6 +503,23 @@
             renderPanel(container, `LSS Helper: AAO „${byName[0].textContent.trim()}“ passt zum Einsatz.`, []);
         };
 
+        // 0) Übergabeort: Patienten warten auf den Rettungsdienst – RTW pro Patient, NEF wo gefordert
+        const patientCount = document.querySelectorAll('.mission_patient').length;
+        if (/übergabe/i.test(title) || (!type && patientCount && !missing.length)) {
+            const medical = MEDICAL.default;
+            const demands = [];
+            if (patientCount) demands.push({ demand: medical.transport, label: 'RTW (1 pro Patient)', need: patientCount });
+            ['nef', 'rth', 'lna', 'orgl'].forEach(key => {
+                if (patientNeeds[key]) demands.push({ demand: medical[key], label: medical[key].label, need: patientNeeds[key] });
+            });
+            // Bei mehr als 5 bzw. 10 Patienten verlangt das Spiel LNA bzw. OrgL
+            if (patientCount >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1 });
+            if (patientCount >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1 });
+            const infos = patientCount ? [`ℹ Patienten: ${patientCount}`] : ['ℹ Keine Patienten im Einsatzfenster erkannt'];
+            markDemands(container, aaos, demands, infos, 'LSS Helper: Übergabeort – benötigter Rettungsdienst (Zahl an der AAO = so oft klicken):');
+            return;
+        }
+
         // 1) AAO mit dem Namen des Einsatzes (ohne Einsatzdaten, sofort)
         if (!isFollowUp) {
             const byName = findByName(aaos, [title]);
@@ -696,8 +713,8 @@
             input.dispatchEvent(new Event('input', { bubbles: true }));
             input.dispatchEvent(new Event('change', { bubbles: true }));
         };
-        // Namensschema: "Einsatzname [max. Patienten/davon evtl. mit Notarzt]"
-        setValue(caption, mission.p ? `${mission.n} [${mission.p[0]}/${mission.p[2] ? mission.p[0] : 0}]` : mission.n);
+        // Namensschema: "Einsatzname [max. Patienten/davon evtl. mit Notarzt]", ohne Notarzt nur "[max. Patienten]"
+        setValue(caption, mission.p ? `${mission.n} [${mission.p[0]}${mission.p[2] ? `/${mission.p[0]}` : ''}]` : mission.n);
 
         const amounts = new Map();
         const items = [];

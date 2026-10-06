@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.20.0
+// @version      0.20.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -647,16 +647,62 @@
     // Was die Taste auswählt: AAO -> Anzahl Klicks. Pro Bedarf nur eine AAO, auch wenn mehrere gleich gut passen.
     const hotkeyTargets = new Map();
 
+    let hotkeyBusy = false;
+    // Wird die Taste gedrückt, bevor die Markierung fertig berechnet ist, wird sie danach nachgeholt
+    let hotkeyReady = false;
+    let hotkeyPending = false;
+
     async function pressHotkey() {
-        const targets = Array.from(hotkeyTargets.entries());
-        // Bis neu gerechnet ist, löst ein zweiter Tastendruck nichts aus – sonst käme alles doppelt
-        hotkeyTargets.clear();
-        for (const [aao, clicks] of targets) {
-            for (let i = 0; i < clicks; i++) {
-                aao.click();
-                await sleep(120);
+        if (hotkeyBusy) return;
+        hotkeyBusy = true;
+        try {
+            for (const [aao, clicks] of Array.from(hotkeyTargets.entries())) {
+                for (let i = 0; i < clicks; i++) {
+                    aao.click();
+                    await sleep(120);
+                }
             }
+            // Kurz warten, bis das Spiel ausgewählt und die Leiste neu gerechnet hat – sonst käme bei schnellem Doppeldruck alles doppelt
+            await sleep(1300);
+        } finally {
+            hotkeyBusy = false;
         }
+    }
+
+    // Liefert true, wenn die Taste hier etwas auslöst (auch vom Hauptfenster aus aufrufbar)
+    function triggerHotkey() {
+        if (!settings.hotkey) return false;
+        if (!hotkeyReady) return (hotkeyPending = true);
+        if (!hotkeyTargets.size) return false;
+        pressHotkey();
+        return true;
+    }
+
+    const isHotkey = e =>
+        !!settings.hotkey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.toLowerCase() === settings.hotkey && !(e.target.closest && e.target.closest('input, textarea, select, [contenteditable]'));
+
+    // Hauptfenster: Die Taste landet oft hier statt im Einsatzfenster (Fokus) – dann an das offene Einsatzfenster weiterreichen
+    function hotkeyRelay() {
+        if (window.top !== window) return;
+        document.addEventListener(
+            'keydown',
+            e => {
+                if (!isHotkey(e)) return;
+                const handled = Array.from(document.querySelectorAll('iframe')).some(frame => {
+                    try {
+                        const inner = frame.contentWindow;
+                        return frame.getClientRects().length > 0 && /^\/missions\/\d+/.test(inner.location.pathname) && inner.LSSHelper && inner.LSSHelper.hotkey();
+                    } catch (err) {
+                        return false;
+                    }
+                });
+                if (handled) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                }
+            },
+            true
+        );
     }
 
     function markDemands(container, aaos, demands, infos, headline) {
@@ -734,21 +780,23 @@
 
     // Einsatzfenster: einmal markieren, danach bei jeder Änderung der Fahrzeugauswahl neu rechnen
     async function aaoHighlightLive() {
-        await aaoHighlight();
-        allowTabSwitch = false;
         // Taste wählt die markierten AAOs aus – alarmiert wird weiterhin von Hand
         document.addEventListener(
             'keydown',
             e => {
-                if (!settings.hotkey || e.ctrlKey || e.metaKey || e.altKey || e.key.toLowerCase() !== settings.hotkey) return;
-                if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
-                if (!hotkeyTargets.size) return;
+                if (!isHotkey(e) || !triggerHotkey()) return;
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                pressHotkey();
             },
             true
         );
+        await aaoHighlight();
+        allowTabSwitch = false;
+        hotkeyReady = true;
+        if (hotkeyPending) {
+            hotkeyPending = false;
+            triggerHotkey();
+        }
         if (!settings.subtractPresent || !document.getElementById('mission-aao-group')) return;
         const signature = () => presentVehicles().selected.sort().join(',');
         liveSignature = signature();
@@ -2167,13 +2215,14 @@
         // Einsatzdaten im Hauptfenster vorladen, damit Einsatzfenster nicht warten müssen
         { name: 'preloadMissions', match: /^\/$/, run: getMissions },
         { name: 'refreshVehicleData', match: /^\/$/, run: refreshVehicleData },
+        { name: 'hotkeyRelay', match: /^\/$/, run: hotkeyRelay },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, hotkey: triggerHotkey, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

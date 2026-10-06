@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.19.0
+// @version      0.20.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -38,8 +38,10 @@
         colorName: '#ff00d4',
         colorVehicles: '#00e5ff',
         minChance: 50,
+        hotkey: 'y',
     };
     const SETTINGS_LABELS = {
+        hotkey: 'Taste, die im Einsatzfenster die markierte AAO auswählt (leer = aus)',
         markName: 'AAO mit Einsatznamen markieren',
         markVehicles: 'Fahrzeug-AAOs markieren',
         subtractPresent: 'Bereits alarmierte und angehakte Fahrzeuge abziehen',
@@ -51,7 +53,7 @@
         pulse: 'Markierung pulsieren lassen',
         colorName: 'Farbe Namens-Treffer',
         colorVehicles: 'Farbe Fahrzeug-AAOs',
-        minChance: 'Rettungsdienst in neue AAO ab Wahrscheinlichkeit (%)',
+        minChance: 'Fahrzeuge erst ab dieser Wahrscheinlichkeit (%) markieren und in neue AAOs aufnehmen',
     };
     const settings = Object.assign({}, DEFAULTS);
     try {
@@ -593,6 +595,7 @@
             #lsshelper-dash a.lsshelper-dash-link:hover { color: var(--accent); }
             .lsshelper-dash-spacer { margin-right: auto; }
             #lsshelper-dash input.lsshelper-dash-search { height: 26px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
+            #lsshelper-dash input.lsshelper-dash-key { width: 34px; text-align: center; text-transform: uppercase; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
             #lsshelper-dash input[type="number"] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
             .lsshelper-menu-badge { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: #c62828; color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
@@ -625,7 +628,7 @@
         const head = document.createElement('b');
         head.textContent = headline;
         panel.append(head);
-        if (!settings.showList) items = items.filter(text => !/^[✓✗●]/.test(text) || /^✗/.test(text));
+        if (!settings.showList) items = items.filter(text => !/^[✓✗●○]/.test(text) || /^✗/.test(text));
         if (items.length) panel.append(document.createElement('br'));
         items.forEach(text => {
             const item = document.createElement('span');
@@ -633,6 +636,27 @@
             item.textContent = text;
             panel.append(item);
         });
+        if (settings.hotkey && hotkeyTargets.size) {
+            const hint = document.createElement('span');
+            hint.className = 'lsshelper-item';
+            hint.textContent = `⌨ Taste „${settings.hotkey.toUpperCase()}“ wählt die Markierung aus`;
+            panel.append(hint);
+        }
+    }
+
+    // Was die Taste auswählt: AAO -> Anzahl Klicks. Pro Bedarf nur eine AAO, auch wenn mehrere gleich gut passen.
+    const hotkeyTargets = new Map();
+
+    async function pressHotkey() {
+        const targets = Array.from(hotkeyTargets.entries());
+        // Bis neu gerechnet ist, löst ein zweiter Tastendruck nichts aus – sonst käme alles doppelt
+        hotkeyTargets.clear();
+        for (const [aao, clicks] of targets) {
+            for (let i = 0; i < clicks; i++) {
+                aao.click();
+                await sleep(120);
+            }
+        }
     }
 
     function markDemands(container, aaos, demands, infos, headline) {
@@ -641,11 +665,15 @@
         log('AAO-Inhalte', parsed);
         // Eine AAO kann mehrere Bedarfe decken – dann zählt die höchste Klickzahl
         const clicksByAao = new Map();
-        const open = demands.filter(d => d.need > 0);
+        // Was der Einsatz nur selten braucht, wird genannt, aber weder markiert noch per Taste ausgewählt
+        const rare = d => d.chance !== undefined && d.chance < settings.minChance;
+        const open = demands.filter(d => d.need > 0 && !rare(d));
         const items = resolveDemands(open, aaos, parsed).map(r => {
             r.hits.forEach(h => clicksByAao.set(h.aao, Math.max(h.clicks, clicksByAao.get(h.aao) || 0)));
+            if (r.hits[0] && settings.markVehicles) hotkeyTargets.set(r.hits[0].aao, Math.max(r.hits[0].clicks, hotkeyTargets.get(r.hits[0].aao) || 0));
             return `${r.hits.length ? '✓' : '✗'} ${r.need}× ${r.label}${r.present ? ` (${r.present} schon alarmiert/angehakt)` : ''}`;
         });
+        demands.filter(d => d.need > 0 && rare(d)).forEach(d => items.push(`○ evtl. ${d.need}× ${d.label}`));
         demands.filter(d => d.need <= 0).forEach(d => items.push(`● ${d.label}: schon alarmiert/angehakt`));
         let firstTab = null;
         if (settings.markVehicles) {
@@ -670,7 +698,8 @@
             Array.from(document.querySelectorAll(selector))
                 .filter(row => !(skipForeign && isForeign(row)))
                 .map(row => {
-                    const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
+                    // Der Fahrzeugtyp steht je nach Tabelle an der Zeile, an einer Zelle oder am Häkchen selbst
+                    const el = row.matches('[vehicle_type_id]') ? row : (row.closest('tr') || row).querySelector('[vehicle_type_id]');
                     return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
                 })
                 .filter(type => !isNaN(type));
@@ -707,6 +736,19 @@
     async function aaoHighlightLive() {
         await aaoHighlight();
         allowTabSwitch = false;
+        // Taste wählt die markierten AAOs aus – alarmiert wird weiterhin von Hand
+        document.addEventListener(
+            'keydown',
+            e => {
+                if (!settings.hotkey || e.ctrlKey || e.metaKey || e.altKey || e.key.toLowerCase() !== settings.hotkey) return;
+                if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+                if (!hotkeyTargets.size) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                pressHotkey();
+            },
+            true
+        );
         if (!settings.subtractPresent || !document.getElementById('mission-aao-group')) return;
         const signature = () => presentVehicles().selected.sort().join(',');
         liveSignature = signature();
@@ -722,8 +764,9 @@
             // AAOs wählen ihre Fahrzeuge teils verzögert aus
             [250, 1200].forEach(delay => setTimeout(refresh, delay));
         };
-        document.addEventListener('click', schedule);
-        document.addEventListener('change', schedule);
+        // In der Einfangphase lauschen: Das Spiel hält Klicks auf AAOs an, bevor sie beim Dokument ankommen
+        document.addEventListener('click', schedule, true);
+        document.addEventListener('change', schedule, true);
     }
 
     async function aaoHighlight() {
@@ -741,7 +784,9 @@
         const present = presentVehicles();
         // Einsatz wurde schon bearbeitet: nicht noch einmal die ganze AAO vorschlagen, nur den Rest
         const dispatched = settings.subtractPresent && present.driving.length + present.atScene.length + present.selected.length > 0;
+        hotkeyTargets.clear();
         const showName = byName => {
+            hotkeyTargets.set(byName[0], 1);
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
             renderPanel(container, `LSS Helper: AAO „${byName[0].textContent.trim()}“ passt zum Einsatz.`, []);
         };
@@ -1942,9 +1987,13 @@
             const row = dashEl('label', 'lsshelper-dash-row');
             const input = dashEl('input');
             input.dataset.key = key;
-            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : 'color';
+            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : /^#/.test(DEFAULTS[key]) ? 'color' : 'text';
             if (input.type === 'checkbox') input.checked = settings[key];
             else input.value = settings[key];
+            if (input.type === 'text') {
+                input.maxLength = 1;
+                input.className = 'lsshelper-dash-key';
+            }
             row.append(input, dashEl('span', '', SETTINGS_LABELS[key]));
             card.append(row);
             return input;
@@ -1957,7 +2006,7 @@
             }),
             dashButton('Speichern', 'lsshelper-btn-primary', () => {
                 inputs.forEach(input => {
-                    settings[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
+                    settings[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value.toLowerCase();
                 });
                 localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
                 ctx.status('Gespeichert. Gilt ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');

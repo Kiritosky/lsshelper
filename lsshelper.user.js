@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.17.0
+// @version      0.18.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -15,7 +15,7 @@
     'use strict';
 
     const DEBUG = false;
-    const CACHE_KEY = 'lsshelper_missions_v4';
+    const CACHE_KEY = 'lsshelper_missions_v6';
     const CACHE_TTL = 24 * 60 * 60 * 1000;
 
     const log = (...args) => DEBUG && console.log('[LSS Helper]', ...args);
@@ -33,7 +33,6 @@
         showList: true,
         openTab: true,
         createButton: true,
-        auditButton: true,
         crewButton: true,
         pulse: true,
         colorName: '#ff00d4',
@@ -48,8 +47,7 @@
         showList: 'Fahrzeugliste in der Leiste anzeigen',
         openTab: 'AAO-Tab automatisch öffnen',
         createButton: 'Button „AAO anlegen“ anzeigen',
-        auditButton: 'Button „AAOs prüfen“ anzeigen',
-        crewButton: 'Knöpfe für das Wachen-Dashboard anzeigen',
+        crewButton: 'Menüeintrag und Wachen-Knopf für das Dashboard anzeigen',
         pulse: 'Markierung pulsieren lassen',
         colorName: 'Farbe Namens-Treffer',
         colorVehicles: 'Farbe Fahrzeug-AAOs',
@@ -63,47 +61,6 @@
         });
     } catch (e) {
         /* kaputte Einstellungen -> Standard */
-    }
-
-    function toggleSettings(panel) {
-        const open = document.getElementById('lsshelper-settings');
-        if (open) return open.remove();
-        const box = document.createElement('div');
-        box.id = 'lsshelper-settings';
-        Object.keys(DEFAULTS).forEach(key => {
-            const row = document.createElement('label');
-            const input = document.createElement('input');
-            input.dataset.key = key;
-            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : 'color';
-            if (input.type === 'checkbox') input.checked = settings[key];
-            else input.value = settings[key];
-            row.append(input, ` ${SETTINGS_LABELS[key]}`);
-            box.append(row);
-        });
-        const button = (text, cls, onClick) => {
-            const btn = document.createElement('a');
-            btn.href = '#';
-            btn.className = `btn btn-xs ${cls}`;
-            btn.textContent = text;
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                onClick();
-                location.reload();
-            });
-            return btn;
-        };
-        box.append(
-            button('Speichern', 'btn-success', () => {
-                const values = {};
-                box.querySelectorAll('input').forEach(input => {
-                    values[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
-                });
-                localStorage.setItem(SETTINGS_KEY, JSON.stringify(values));
-            }),
-            ' ',
-            button('Standard wiederherstellen', 'btn-default', () => localStorage.removeItem(SETTINGS_KEY))
-        );
-        panel.after(box);
     }
 
     /* ------------------------------------------------------------------ *
@@ -142,6 +99,11 @@
                 // Fahrzeuggruppen, die den Einsatzort überhaupt erreichen (z. B. Bergrettung, Seenotrettung)
                 g: a.vehicle_groups || null,
                 c: e.mission_categories || [],
+                // Voraussetzungen (Wachenzahlen, Erweiterungen) und Merker für Sonderfälle: Verbands-, Folge- und Zeiteinsätze
+                q: e.prerequisites || {},
+                // Wahrscheinlichkeiten (%) für Anforderungen, die nicht bei jedem Einsatz gebraucht werden
+                h: Object.fromEntries(Object.entries(c).filter(([key]) => e.requirements && key in e.requirements)),
+                x: a.only_alliance_mission || a.unavailable_in_normal_missions || a.subsequent_mission_only || a.date_start ? 1 : 0,
             };
         });
         try {
@@ -601,6 +563,13 @@
             #lsshelper-dash a.lsshelper-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
             #lsshelper-dash a.lsshelper-btn-quiet { border-color: transparent; background: transparent; color: var(--muted); }
             #lsshelper-dash a.lsshelper-btn-busy { opacity: 0.5; cursor: wait; }
+            .lsshelper-dash-pane { display: grid; gap: 12px; }
+            .lsshelper-dash-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
+            #lsshelper-dash a.lsshelper-tab { border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--muted); padding: 6px 14px; font-size: 13px; }
+            #lsshelper-dash a.lsshelper-tab-active { background: var(--card); border-color: var(--line); color: var(--text); font-weight: 700; margin-bottom: -1px; }
+            .lsshelper-dash-spacer { margin-right: auto; }
+            #lsshelper-dash input.lsshelper-dash-search { height: 26px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
+            #lsshelper-dash input[type="number"] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
             .lsshelper-menu-badge { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: #c62828; color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
@@ -640,23 +609,6 @@
             item.textContent = text;
             panel.append(item);
         });
-        const buttons = document.createElement('span');
-        buttons.className = 'pull-right';
-        const button = (text, title, onClick) => {
-            const btn = document.createElement('a');
-            btn.className = 'btn btn-xs btn-default';
-            btn.href = '#';
-            btn.textContent = text;
-            btn.title = title;
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                onClick();
-            });
-            buttons.append(btn, ' ');
-        };
-        if (settings.auditButton) button('AAOs prüfen', 'Alle AAOs gegen die Spieldaten abgleichen', () => aaoAudit().catch(err => console.error('[LSS Helper] aaoAudit', err)));
-        button('⚙', 'LSS Helper Einstellungen', () => toggleSettings(panel));
-        panel.prepend(buttons);
     }
 
     function markDemands(container, aaos, demands, infos, headline) {
@@ -875,7 +827,8 @@
         const infos = [];
         Object.entries(mission.r).forEach(([key, need]) => {
             const demand = restrictDemand(DEMAND_BY_KEY[key], mission);
-            if (demand && typeof need === 'number' && need > 0) demands.push({ demand, label: demand.label, need, chance: 100 });
+            const chance = (mission.h && mission.h[key]) || 100;
+            if (demand && typeof need === 'number' && need > 0) demands.push({ demand, label: chance < 100 ? `${demand.label} (${chance} %)` : demand.label, need, chance, key });
             else infos.push(`ℹ ${INFO_ONLY[key] || key}: ${typeof need === 'object' ? JSON.stringify(need) : need}`);
         });
         if (mission.p) {
@@ -896,25 +849,37 @@
      * ------------------------------------------------------------------ */
 
     // AAO-Felder, die Mengen statt Fahrzeuge angeben
-    const AMOUNT_ATTRS = /amount|value/;
+    const AMOUNT_ATTRS = /amount|value|equipment_mode/;
+    // Rettungsdienst-Felder und -Fahrzeugtypen (RTW, KTW, NEF, RTH, NAW, ITW, GRTW, LNA, OrgL, SEG)
+    const MEDICAL_ATTRS = /^(rtw|ktw|ktw_b|naw|nef|nef_only|rth_only|grtw\d?|kdow_lna|kdow_orgl|seg_elw|gw_san|ktw_or_rtw(_2)?|naw_or_rtw_and_nef(_or_rth)?)$/;
+    const MEDICAL_TYPES = [28, 29, 31, 38, 55, 56, 58, 59, 60, 73, 74, 97, 149, 157];
 
     // Einsatzname -> Einsatz mit der Maximalanforderung aller gleichnamigen Varianten
-    function missionsByName(missions) {
-        if (shared.byName) return shared.byName;
+    // Varianten, die erst mit mehr Wachen oder einer zusätzlichen Erweiterung kommen (z. B. mit Dienstgruppenleitung
+    // oder Drohne), bleiben außen vor – sonst würde jede AAO als unvollständig gemeldet.
+    function missionsByName(missions, buildings) {
         const byName = new Map();
-        Object.values(missions).forEach(m => {
+        const baseUnknown = {};
+        // Grundeinsätze zuerst, damit sie den Maßstab für ihre Varianten setzen
+        const entries = Object.entries(missions).sort((a, b) => /^\d+$/.test(b[0]) - /^\d+$/.test(a[0]));
+        entries.forEach(([, m]) => {
             const key = normalize(m.n);
             const merged = byName.get(key);
+            const access = missionAccess(m, buildings);
             if (!merged) {
-                byName.set(key, { n: m.n, r: Object.assign({}, m.r), p: m.p && m.p.slice(), g: m.g, c: m.c, words: normalizeTitle(m.n).split(' ') });
+                // Was schon dem Grundeinsatz fehlt (z. B. eine Wasserrettungswache), darf auch den Varianten fehlen
+                baseUnknown[key] = access.unknown.concat(access.unmet.map(u => u.key));
+                byName.set(key, { n: m.n, r: Object.assign({}, m.r), h: Object.assign({}, m.h), p: m.p && m.p.slice(), g: m.g, c: m.c, words: normalizeTitle(m.n).split(' ') });
                 return;
             }
+            if (access.capped || !access.unknown.concat(access.unmet.map(u => u.key)).every(k => baseUnknown[key].includes(k))) return;
+            merged.h = Object.assign({}, m.h, merged.h);
             Object.entries(m.r).forEach(([k, v]) => {
                 if (typeof v === 'number') merged.r[k] = Math.max(merged.r[k] || 0, v);
             });
             if (m.p) merged.p = merged.p ? merged.p.map((v, i) => Math.max(v, m.p[i])) : m.p.slice();
         });
-        return (shared.byName = byName);
+        return byName;
     }
 
     // Ordnet eine AAO über ihren (ggf. abgekürzten) Namen ihren Einsätzen zu; "Arm/Bein" ergibt zwei
@@ -943,22 +908,27 @@
         return { missions: Array.from(found), ambiguous };
     }
 
-    function checkAao(aao, mission, aaoTypes) {
-        const text = aao.textContent.trim();
-        const specs = getAaoSpecs(aao, new Set(aaoTypes.keys())).filter(s => s.attr === undefined || !AMOUNT_ATTRS.test(s.attr));
+    // Vergleicht den Inhalt einer AAO ([{ typeId | attr, amount }]) mit dem Bedarf eines Einsatzes
+    function checkAao(text, allSpecs, mission) {
+        const aaoTypes = new Map(window.aao_types || []);
+        // Mengenangaben und Rettungsdienst bleiben außen vor: ob RTW, NEF oder LNA in der AAO stehen, ist Geschmackssache
+        const specs = allSpecs.filter(s => (s.attr === undefined ? !MEDICAL_TYPES.includes(s.typeId) : !AMOUNT_ATTRS.test(s.attr) && !MEDICAL_ATTRS.test(s.attr)));
         const demands = missionDemands(mission, 0).demands;
         const issues = [];
         const have = d => specs.filter(s => specMatches(s, d.demand)).reduce((sum, s) => sum + s.amount, 0);
 
-        demands.filter(d => !d.medical).forEach(d => {
+        // Pflicht ist nur, was der Einsatz immer verlangt und was nicht zum Rettungsdienst gehört.
+        // Der LKW K 9 zieht den BRmG R und kommt mit ihm zusammen, zählt also nicht einzeln.
+        const required = d => !d.medical && d.chance >= 100 && d.key !== 'thw_lkw' && !d.demand.types.every(type => MEDICAL_TYPES.includes(type));
+        demands.filter(required).forEach(d => {
             if (have(d) < d.need) issues.push(`fehlt: ${d.need - have(d)}× ${d.label}`);
         });
         const excess = new Set();
         specs.forEach(spec => {
             const matched = demands.filter(d => specMatches(spec, d.demand));
             if (!matched.length) {
-                issues.push(`nicht benötigt: ${spec.amount}× ${spec.attr !== undefined ? aaoTypes.get(spec.attr) : `Fahrzeugtyp #${spec.typeId}`}`);
-            } else if (matched.length === 1 && !matched[0].medical && have(matched[0]) > matched[0].need) {
+                issues.push(`nicht benötigt: ${spec.amount}× ${spec.attr !== undefined ? aaoTypes.get(spec.attr) || spec.attr : `Fahrzeugtyp #${spec.typeId}`}`);
+            } else if (matched.length === 1 && required(matched[0]) && have(matched[0]) > matched[0].need) {
                 excess.add(matched[0]);
             }
         });
@@ -967,50 +937,6 @@
         const bracket = text.match(/\[(\d+)(?:\/\d+)?\]/);
         if (bracket && mission.p && parseInt(bracket[1]) !== mission.p[0]) issues.push(`Klammer [${bracket[1]}…] – laut Spieldaten bis zu ${mission.p[0]} Patienten`);
         return issues;
-    }
-
-    async function aaoAudit() {
-        const container = document.getElementById('mission-aao-group');
-        if (!container) return;
-        const aaoTypes = new Map(window.aao_types || []);
-        const byName = missionsByName(await getMissions());
-        const stats = { ok: 0, bad: 0, ambiguous: 0, unmatched: 0 };
-
-        let report = document.getElementById('lsshelper-report');
-        if (!report) {
-            report = document.createElement('div');
-            report.id = 'lsshelper-report';
-            document.getElementById('lsshelper-panel').after(report);
-        }
-        report.textContent = '';
-        const rows = document.createElement('div');
-
-        container.querySelectorAll('a.aao').forEach(aao => {
-            const text = aao.textContent.trim();
-            const { missions, ambiguous } = missionsForAao(text, byName);
-            if (!missions.length) return ambiguous ? stats.ambiguous++ : stats.unmatched++;
-            const problems = missions.map(mission => ({ mission, issues: checkAao(aao, mission, aaoTypes) })).filter(p => p.issues.length);
-            if (!problems.length) return stats.ok++;
-            stats.bad++;
-            const row = document.createElement('div');
-            row.className = 'lsshelper-report-row';
-            const name = document.createElement('b');
-            name.textContent = text;
-            row.append(name, ...problems.map(p => ` → ${p.mission.n}: ${p.issues.join(' · ')} `));
-            const id = aao.getAttribute('aao_id');
-            if (id) {
-                const edit = document.createElement('a');
-                edit.href = `/aaos/${id}/edit`;
-                edit.target = '_blank';
-                edit.textContent = 'bearbeiten';
-                row.append(edit);
-            }
-            rows.append(row);
-        });
-
-        const head = document.createElement('b');
-        head.textContent = `AAO-Prüfung: ${stats.bad} mit Abweichungen, ${stats.ok} in Ordnung, ${stats.ambiguous} mehrdeutig, ${stats.unmatched} keinem Einsatz zugeordnet (z. B. Fahrzeug-AAOs). Verglichen wird mit der größten Variante des Einsatzes; Rettungsdienst zählt nicht als fehlend.`;
-        report.append(head, rows);
     }
 
     /* ------------------------------------------------------------------ *
@@ -1093,6 +1019,7 @@
             } else {
                 // Das Spiel erwartet den Farbcode ohne "#"; nur echte Farbwähler brauchen es
                 const color = isText ? text : background;
+                if (!color) return;
                 setValue(field, field.type === 'color' ? color : color.replace('#', ''));
             }
         });
@@ -1517,35 +1444,441 @@
 
     const DASH_GROUPS = [
         { title: 'Leitstelle', kinds: ['leitstelle'], button: 'Leitstelle zuweisen' },
+        { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
         { title: 'Sitzlimits', kinds: ['limit'], button: 'Sitzlimits übernehmen' },
         { title: 'Lehrgangspersonal', kinds: ['assign'], button: 'Lehrgangspersonal zuweisen' },
-        { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
     ];
 
     const THEME_KEY = 'lsshelper_dash_theme';
+    const TAB_KEY = 'lsshelper_dash_tab';
 
-    async function openDashboard(onlyBuildingId) {
+    function dashEl(tag, cls, text) {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text) node.textContent = text;
+        return node;
+    }
+
+    function dashButton(text, cls, onClick) {
+        const btn = dashEl('a', `lsshelper-btn ${cls || ''}`, text);
+        btn.href = '#';
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            onClick(btn);
+        });
+        return btn;
+    }
+
+    // Karte mit Titel und Zähler; weitere Knöpfe kommen in card.head
+    function dashCard(parent, title, count, countClass) {
+        const card = dashEl('div', 'lsshelper-dash-card');
+        card.head = dashEl('div', 'lsshelper-dash-card-head');
+        card.head.append(dashEl('span', 'lsshelper-dash-card-title', title));
+        if (count !== undefined) card.head.append(dashEl('span', `lsshelper-dash-count ${countClass || ''}`, String(count)));
+        else card.head.append(dashEl('span', 'lsshelper-dash-spacer'));
+        card.append(card.head);
+        parent.append(card);
+        return card;
+    }
+
+    // Führt angehakte Vorschläge nacheinander aus und markiert jede Zeile als erledigt oder fehlgeschlagen
+    async function applyChanges(todo, label, ctx, btn) {
+        if (!todo.length || btn.dataset.busy) return;
+        btn.dataset.busy = '1';
+        btn.classList.add('lsshelper-btn-busy');
+        let failed = 0;
+        for (const [index, change] of todo.entries()) {
+            ctx.status(`${label}: ${index + 1}/${todo.length} …`);
+            try {
+                await APPLY[change.kind](change);
+                change.done = true;
+                change.box.disabled = true;
+                change.row.classList.add('lsshelper-dash-done');
+            } catch (err) {
+                failed++;
+                change.row.append(dashEl('em', '', ` – ${err.message}`));
+                change.row.classList.add('lsshelper-dash-failed');
+            }
+            await sleep(250);
+        }
+        delete btn.dataset.busy;
+        btn.classList.remove('lsshelper-btn-busy');
+        ctx.status(`${label}: ${todo.length - failed} übernommen${failed ? `, ${failed} fehlgeschlagen` : ''}. Zum Neuberechnen das Werkzeug erneut öffnen.`);
+    }
+
+    /* ---------------- Werkzeug: Wachen ---------------- */
+
+    async function renderStationsTool(ctx) {
+        ctx.status('Lese Wachen und Fahrzeuge …');
+        const plan = await ctx.fleet();
+        const actionable = plan.changes.filter(c => c.kind !== 'training');
+        ctx.status(`${plan.stations.length} Wachen geprüft · ${actionable.length} Vorschläge · nichts wird geändert, bevor du „übernehmen“ drückst.`);
+        const updateCount = () => !ctx.onlyBuildingId && showDashCount(countOpen(plan.changes));
+
+        // Neues Fahrzeug fertig einrichten: Name, Sitzlimit und Lehrgangspersonal in einem Rutsch
+        if (actionable.length) {
+            const card = dashCard(ctx.body, 'Alles auf einmal', actionable.length);
+            card.append(dashEl('div', 'lsshelper-dash-empty', 'Übernimmt alle angehakten Vorschläge unten der Reihe nach – z. B. um ein neu gekauftes Fahrzeug fertig einzurichten.'));
+            card.head.append(
+                dashButton('Alles übernehmen', 'lsshelper-btn-primary', async btn => {
+                    const order = DASH_GROUPS.flatMap(g => g.kinds);
+                    const todo = actionable.filter(c => c.box && c.box.checked && !c.done).sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+                    await applyChanges(todo, 'Alles', ctx, btn);
+                    updateCount();
+                })
+            );
+        }
+
+        DASH_GROUPS.forEach(group => {
+            const items = plan.changes.filter(c => group.kinds.includes(c.kind));
+            const card = dashCard(ctx.body, group.title, items.length || '✓', items.length ? '' : 'lsshelper-dash-count-ok');
+            if (!items.length) return card.append(dashEl('div', 'lsshelper-dash-empty', 'Alles in Ordnung.'));
+            const byStation = new Map();
+            items.forEach(c => {
+                const key = c.station ? c.station.building.caption : 'Wachen';
+                byStation.set(key, (byStation.get(key) || []).concat(c));
+            });
+            byStation.forEach((list, caption) => {
+                const station = list[0].station;
+                const stationHead = dashEl('div', 'lsshelper-dash-station', caption);
+                if (station) stationHead.append(dashEl('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats}`));
+                card.append(stationHead);
+                list.forEach(change => {
+                    change.row = dashEl('label', 'lsshelper-dash-row');
+                    change.box = dashEl('input');
+                    change.box.type = 'checkbox';
+                    change.box.checked = !change.optional;
+                    change.row.append(change.box, dashEl('span', '', change.text));
+                    card.append(change.row);
+                });
+            });
+            card.head.append(
+                dashButton('alle an/aus', 'lsshelper-btn-quiet', () => {
+                    const open = items.filter(c => !c.done);
+                    const allOn = open.every(c => c.box.checked);
+                    open.forEach(c => (c.box.checked = !allOn));
+                }),
+                dashButton(group.button, 'lsshelper-btn-primary', async btn => {
+                    await applyChanges(items.filter(c => c.box.checked && !c.done), group.title, ctx, btn);
+                    updateCount();
+                })
+            );
+        });
+
+        // Lehrgangsbedarf: fehlende Ausbildungen je Wache, mit Sprung zur passenden eigenen Schule oder zu den Verbandslehrgängen
+        const trainings = plan.changes.filter(c => c.kind === 'training');
+        const notes = plan.stations.filter(s => s.note && s.note !== 'kein Personal').map(s => `${s.building.caption}: ${s.note}`);
+        if (trainings.length || notes.length) {
+            const card = dashCard(ctx.body, 'Lehrgangsbedarf', trainings.length + notes.length, 'lsshelper-dash-count-warn');
+            trainings.forEach(change => {
+                const row = dashEl('div', 'lsshelper-dash-note', `${change.station.building.caption} ${change.text} `);
+                const school = plan.buildings.find(b => b.building_type === SCHOOL_TYPES[change.station.building.building_type]);
+                const link = dashEl('a', 'lsshelper-btn lsshelper-btn-quiet', school ? `${school.caption} öffnen` : 'Verbandslehrgänge öffnen');
+                link.href = school ? `/buildings/${school.id}` : '/schoolings';
+                link.target = '_blank';
+                row.append(link);
+                card.append(row);
+            });
+            notes.forEach(text => card.append(dashEl('div', 'lsshelper-dash-note', text)));
+        }
+        updateCount();
+    }
+
+    /* ---------------- Werkzeug: Ausbau ---------------- */
+
+    // Wachentyp -> typisches Fahrzeug und dessen Sitzplätze, um freies Personal in Fahrzeuge umzurechnen
+    const TYPICAL_VEHICLE = { 0: ['LF 20', 9], 18: ['LF 20', 9], 2: ['RTW', 2], 20: ['RTW', 2], 6: ['FuStW', 2], 19: ['FuStW', 2], 9: ['GKW', 9], 25: ['GW-Bergrettung', 6] };
+
+    // Voraussetzung in den Einsatzdaten -> Gebäudetypen, die dafür zählen
+    const COUNT_KEYS = {
+        fire_stations: { types: [0, 18], label: 'Feuerwachen' },
+        rescue_stations: { types: [2, 20], label: 'Rettungswachen' },
+        police_stations: { types: [6, 19], label: 'Polizeiwachen' },
+        thw: { types: [9], label: 'THW-Ortsverbände' },
+        bereitschaftspolizei: { types: [11], label: 'Bereitschaftspolizei-Wachen' },
+        wasserrettung: { types: [15], label: 'Wasserrettungswachen' },
+        mountain_rescue: { types: [25], label: 'Bergrettungswachen' },
+        police_helicopter_stations: { types: [13], label: 'Polizeihubschrauber-Stationen' },
+        seg: { types: [12], label: 'SEG-Wachen' },
+        coastal_rescue_count: { types: [26], label: 'Seenotrettungswachen' },
+    };
+    const BUILDING_NAMES = { 0: 'Feuerwache', 2: 'Rettungswache', 5: 'Rettungshubschrauber-Station', 6: 'Polizeiwache', 9: 'THW-Ortsverband', 11: 'Bereitschaftspolizei', 12: 'SEG', 13: 'Polizeihubschrauber-Station', 15: 'Wasserrettung', 17: 'Polizei-Sondereinheiten', 21: 'Rettungshundestaffel', 24: 'Reiterstaffel', 25: 'Bergrettungswache', 26: 'Seenotrettungswache' };
+
+    // Prüft die Voraussetzungen eines Einsatzes gegen die eigenen Gebäude.
+    // unknown = Voraussetzungen (meist Erweiterungen), die sich aus den Gebäudedaten nicht sicher ablesen lassen.
+    function missionAccess(mission, buildings) {
+        const count = types => buildings.filter(b => types.includes(b.building_type)).length;
+        const result = { unmet: [], unknown: [], mainMissing: null, capped: false };
+        Object.entries(mission.q || {}).forEach(([key, value]) => {
+            if (key === 'main_building') {
+                const same = { 0: [0, 18], 2: [2, 20], 6: [6, 19] }[value] || [value];
+                if (!count(same)) result.mainMissing = value;
+            } else if (COUNT_KEYS[key]) {
+                const have = count(COUNT_KEYS[key].types);
+                if (have < value) result.unmet.push({ key, value, have });
+            } else if (key.startsWith('max_')) {
+                const base = COUNT_KEYS[key.slice(4)];
+                if (base && count(base.types) > value) result.capped = true;
+            } else if (value > 0) {
+                result.unknown.push(key);
+            }
+        });
+        return result;
+    }
+
+    // Grundeinsätze ohne Varianten, Verbands-, Folge- und Zeiteinsätze
+    const baseMissions = missions => Object.entries(missions).filter(([id, m]) => /^\d+$/.test(id) && !m.x);
+
+    async function renderExpansionTool(ctx) {
+        ctx.status('Lese Wachen und Einsatzdaten …');
+        const [plan, missions] = await Promise.all([ctx.fleet(), getMissions()]);
+        ctx.status('Auswertung aus deinen Gebäuden und den Einsatzdaten des Spiels. Hier wird nichts geändert.');
+
+        // Wo freies Personal steht und was es dort bringen würde
+        const spare = plan.stations
+            .filter(s => !s.note && s.personnel > s.seats)
+            .map(s => ({ station: s, free: s.personnel - s.seats }))
+            .sort((a, b) => b.free - a.free);
+        const card = dashCard(ctx.body, 'Ausbau-Vorschlag', spare.length || '✓', spare.length ? '' : 'lsshelper-dash-count-ok');
+        if (!spare.length) card.append(dashEl('div', 'lsshelper-dash-empty', 'Auf keiner Wache steht Personal ohne Sitzplatz.'));
+        spare.forEach(({ station, free }) => {
+            const building = station.building;
+            const typical = TYPICAL_VEHICLE[building.building_type];
+            const slots = building.level + 1;
+            const used = station.vehicles.filter(v => v.max > 0).length;
+            const fits = typical ? Math.floor(free / typical[1]) : 0;
+            const head = dashEl('div', 'lsshelper-dash-station', building.caption);
+            head.append(dashEl('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats} · Stellplätze ${used}/${slots}`));
+            const room = slots - used;
+            const need = Math.max(0, fits - room);
+            const text = fits
+                ? `${free} Leute ohne Sitzplatz – reicht für ${fits}× ${typical[0]}. ${room > 0 ? `${room} Stellplatz${room > 1 ? 'plätze' : ''} frei` : 'Kein Stellplatz frei'}${need ? `, dafür ${need} Ausbaustufe${need > 1 ? 'n' : ''} nötig` : ''}.`
+                : `${free} Leute ohne Sitzplatz.`;
+            card.append(head, dashEl('div', 'lsshelper-dash-note', text));
+        });
+
+        // Welche Einsätze die nächste Wache bringt
+        const steps = {};
+        const newTypes = {};
+        baseMissions(missions).forEach(([, mission]) => {
+            const access = missionAccess(mission, plan.buildings);
+            if (access.capped) return;
+            if (access.mainMissing !== null) {
+                if (!access.unmet.length) (newTypes[access.mainMissing] = newTypes[access.mainMissing] || []).push(mission.n);
+                return;
+            }
+            if (access.unmet.length !== 1) return;
+            const { key, value, have } = access.unmet[0];
+            steps[key] = steps[key] || { have, levels: {} };
+            (steps[key].levels[value] = steps[key].levels[value] || []).push(mission.n + (access.unknown.length ? '*' : ''));
+        });
+        // Gleichnamige Einsätze (verschiedene Orte oder Ausprägungen) zählen einmal
+        const unique = list => Array.from(new Set(list));
+        const names = list => `${list.slice(0, 6).join(', ')}${list.length > 6 ? ` … (+${list.length - 6})` : ''}`;
+        const amount = list => `${list.length} ${list.length === 1 ? 'Einsatz' : 'Einsätze'}`;
+        const unlock = dashCard(ctx.body, 'Nächste Freischaltungen');
+        Object.entries(steps).forEach(([key, { have, levels }]) => {
+            unlock.append(dashEl('div', 'lsshelper-dash-station', `${COUNT_KEYS[key].label}: du hast ${have}`));
+            Object.keys(levels).map(Number).sort((a, b) => a - b).slice(0, 4).forEach(level => {
+                const list = unique(levels[level]);
+                unlock.append(dashEl('div', 'lsshelper-dash-note', `ab ${level} (+${level - have}): ${amount(list)} – ${names(list)}`));
+            });
+        });
+        const missingTypes = Object.entries(newTypes).sort((a, b) => b[1].length - a[1].length);
+        if (missingTypes.length) unlock.append(dashEl('div', 'lsshelper-dash-station', 'Neue Gebäudearten'));
+        missingTypes.forEach(([type, all]) => {
+            const list = unique(all);
+            unlock.append(dashEl('div', 'lsshelper-dash-note', `${BUILDING_NAMES[type] || `Gebäudetyp ${type}`}: ${amount(list)} – ${names(list)}`));
+        });
+        if (!Object.keys(steps).length && !missingTypes.length) unlock.append(dashEl('div', 'lsshelper-dash-empty', 'Keine weiteren Freischaltungen über die Anzahl der Wachen gefunden.'));
+        unlock.append(dashEl('div', 'lsshelper-dash-empty', '* braucht zusätzlich eine Erweiterung, die sich aus den Gebäudedaten nicht sicher ablesen lässt. Einsätze, die nur an Erweiterungen hängen, fehlen in dieser Liste.'));
+    }
+
+    /* ---------------- Werkzeug: AAO ---------------- */
+
+    const CATEGORY_LABELS = { fire: 'Feuerwehr', ambulance: 'Rettungsdienst', police: 'Polizei', thw: 'THW', riot_police: 'Bereitschaftspolizei', water_rescue: 'Wasserrettung', mountain: 'Bergrettung', coastal: 'Seenotrettung', factory_fire_brigade: 'Werkfeuerwehr', airport: 'Flughafen', airport_specialization: 'Flughafen (Spezialisierung)', seg: 'SEG', seg_medical_service: 'SEG-Sanitätsdienst', criminal_investigation: 'Kriminalpolizei', highway_police: 'Autobahnpolizei', energy_supply: 'Stromversorgung (NEA50)', energy_supply_2: 'Stromversorgung (NEA200)', animal_rescue: 'Tierrettung' };
+
+    // AAO aus der Spielschnittstelle -> { id, caption, textContent, specs, categoryId, color, textColor }
+    async function loadAaos() {
+        const list = await fetchJson('/api/v1/aaos');
+        return list.map(aao => ({
+            id: aao.id,
+            caption: aao.caption,
+            textContent: aao.caption,
+            categoryId: aao.aao_category_id,
+            color: aao.color,
+            textColor: aao.text_color,
+            specs: Object.entries(aao.vehicle_classes || {})
+                .map(([attr, amount]) => ({ attr, amount: parseInt(amount) }))
+                .concat(Object.entries(aao.vehicle_types || {}).map(([typeId, amount]) => ({ typeId: parseInt(typeId), amount: parseInt(amount) })))
+                .filter(spec => spec.amount > 0),
+        }));
+    }
+
+    // Merkt sich pro AAO-Kategorie die häufigste Farbe, damit neue AAOs sie übernehmen
+    function saveCategoryStylesFromApi(aaos) {
+        const counts = {};
+        aaos.filter(a => a.categoryId && a.color).forEach(a => {
+            const key = [`#${a.color}`, a.textColor ? `#${a.textColor}` : '', ''].join('|');
+            counts[a.categoryId] = counts[a.categoryId] || {};
+            counts[a.categoryId][key] = (counts[a.categoryId][key] || 0) + 1;
+        });
+        const styles = {};
+        Object.entries(counts).forEach(([category, byStyle]) => {
+            styles[category] = Object.keys(byStyle).sort((a, b) => byStyle[b] - byStyle[a])[0].split('|');
+        });
+        try {
+            localStorage.setItem(STYLES_KEY, JSON.stringify(styles));
+        } catch (e) {
+            log('Farben konnten nicht gespeichert werden', e);
+        }
+    }
+
+    async function renderAaoTool(ctx) {
+        ctx.status('Lese AAOs und Einsatzdaten …');
+        const [aaos, missions, buildings] = await Promise.all([loadAaos(), getMissions(), fetchJson('/api/buildings')]);
+        saveCategoryStylesFromApi(aaos);
+        ctx.status(`${aaos.length} AAOs gelesen. Hier wird nichts geändert – „anlegen“ und „bearbeiten“ öffnen das Formular des Spiels.`);
+        await sleep(0);
+
+        // Fehlende AAOs: Einsätze, die du bekommen kannst, für die aber keine AAO mit passendem Namen existiert
+        const variants = aaos.map(aao => nameVariants(aao.caption));
+        const seen = new Set();
+        const missing = [];
+        baseMissions(missions).forEach(([id, mission]) => {
+            const key = normalizeTitle(mission.n);
+            if (seen.has(key)) return;
+            seen.add(key);
+            const access = missionAccess(mission, buildings);
+            if (access.capped || access.mainMissing !== null || access.unmet.length) return;
+            const words = key.split(' ');
+            if (variants.some(v => nameScore(v, words) >= 0)) return;
+            missing.push({ id, mission, uncertain: access.unknown.length > 0 });
+        });
+        missing.sort((a, b) => (a.mission.c[0] || '').localeCompare(b.mission.c[0] || '') || a.mission.n.localeCompare(b.mission.n));
+
+        const card = dashCard(ctx.body, 'Fehlende AAOs', missing.length || '✓', missing.length ? '' : 'lsshelper-dash-count-ok');
+        if (!missing.length) card.append(dashEl('div', 'lsshelper-dash-empty', 'Für jeden verfügbaren Einsatz gibt es eine AAO.'));
+        else {
+            const search = dashEl('input', 'lsshelper-dash-search');
+            search.type = 'search';
+            search.placeholder = 'Einsatz suchen …';
+            card.head.append(search);
+            const list = dashEl('div');
+            card.append(list, dashEl('div', 'lsshelper-dash-empty', '* braucht evtl. eine Erweiterung, die du noch nicht hast – das lässt sich aus den Gebäudedaten nicht sicher ablesen.'));
+            const LIMIT = 150;
+            const draw = () => {
+                const term = normalize(search.value);
+                const shown = missing.filter(m => !m.done && (!term || normalize(m.mission.n).includes(term)));
+                list.textContent = '';
+                let category = null;
+                shown.slice(0, LIMIT).forEach(entry => {
+                    const current = CATEGORY_LABELS[entry.mission.c[0]] || entry.mission.c[0] || 'Sonstige';
+                    if (current !== category) list.append(dashEl('div', 'lsshelper-dash-station', (category = current)));
+                    const row = dashEl('div', 'lsshelper-dash-note', `${entry.mission.n}${entry.uncertain ? ' *' : ''} `);
+                    row.append(
+                        dashButton('anlegen', 'lsshelper-btn-quiet', () => {
+                            try {
+                                localStorage.setItem(DRAFT_KEY, JSON.stringify({ type: entry.id, mission: entry.mission }));
+                            } catch (e) {
+                                log('Entwurf konnte nicht gespeichert werden', e);
+                            }
+                            // Nach dem Speichern im Formular-Tab verschwindet der Eintrag hier
+                            const onSaved = event => {
+                                if (event.key !== SAVED_KEY || !event.newValue) return;
+                                window.removeEventListener('storage', onSaved);
+                                entry.done = true;
+                                draw();
+                            };
+                            window.addEventListener('storage', onSaved);
+                            window.open(`/aaos/new?${AAO_PARAM}=${encodeURIComponent(entry.id)}`, AAO_WINDOW);
+                        })
+                    );
+                    list.append(row);
+                });
+                if (shown.length > LIMIT) list.append(dashEl('div', 'lsshelper-dash-empty', `… und ${shown.length - LIMIT} weitere – Suche nutzen.`));
+            };
+            search.addEventListener('input', draw);
+            draw();
+        }
+
+        // AAO-Prüfung: bestehende AAOs gegen die Spieldaten
+        const audit = dashCard(ctx.body, 'AAO-Prüfung');
+        const result = dashEl('div');
+        audit.append(dashEl('div', 'lsshelper-dash-empty', 'Vergleicht jede AAO, deren Name zu einem Einsatz passt, mit dessen größter Variante. Rettungsdienst zählt nicht als fehlend.'), result);
+        audit.head.append(
+            dashButton('Prüfung starten', 'lsshelper-btn-primary', async () => {
+                ctx.status('Prüfe AAOs …');
+                await sleep(0);
+                const byName = missionsByName(missions, buildings);
+                const stats = { ok: 0, bad: 0, ambiguous: 0, unmatched: 0 };
+                result.textContent = '';
+                aaos.forEach(aao => {
+                    const found = missionsForAao(aao.caption, byName);
+                    if (!found.missions.length) return found.ambiguous ? stats.ambiguous++ : stats.unmatched++;
+                    const problems = found.missions.map(mission => ({ mission, issues: checkAao(aao.caption, aao.specs, mission) })).filter(p => p.issues.length);
+                    if (!problems.length) return stats.ok++;
+                    stats.bad++;
+                    const row = dashEl('div', 'lsshelper-dash-note');
+                    row.append(dashEl('b', '', aao.caption), ...problems.map(p => ` → ${p.mission.n}: ${p.issues.join(' · ')} `));
+                    const edit = dashEl('a', 'lsshelper-btn lsshelper-btn-quiet', 'bearbeiten');
+                    edit.href = `/aaos/${aao.id}/edit`;
+                    edit.target = '_blank';
+                    row.append(edit);
+                    result.append(row);
+                });
+                ctx.status(`AAO-Prüfung: ${stats.bad} mit Abweichungen, ${stats.ok} in Ordnung, ${stats.ambiguous} mehrdeutig, ${stats.unmatched} keinem Einsatz zugeordnet (z. B. Fahrzeug-AAOs).`);
+                if (!stats.bad) result.append(dashEl('div', 'lsshelper-dash-empty', 'Keine Abweichungen gefunden.'));
+            })
+        );
+    }
+
+    /* ---------------- Werkzeug: Einstellungen ---------------- */
+
+    function renderSettingsTool(ctx) {
+        ctx.status('Einstellungen gelten ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');
+        const card = dashCard(ctx.body, 'Einstellungen');
+        const inputs = Object.keys(DEFAULTS).map(key => {
+            const row = dashEl('label', 'lsshelper-dash-row');
+            const input = dashEl('input');
+            input.dataset.key = key;
+            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : 'color';
+            if (input.type === 'checkbox') input.checked = settings[key];
+            else input.value = settings[key];
+            row.append(input, dashEl('span', '', SETTINGS_LABELS[key]));
+            card.append(row);
+            return input;
+        });
+        card.head.append(
+            dashButton('Standard wiederherstellen', 'lsshelper-btn-quiet', () => {
+                localStorage.removeItem(SETTINGS_KEY);
+                Object.assign(settings, DEFAULTS);
+                ctx.open('settings');
+            }),
+            dashButton('Speichern', 'lsshelper-btn-primary', () => {
+                inputs.forEach(input => {
+                    settings[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value;
+                });
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+                ctx.status('Gespeichert. Gilt ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');
+            })
+        );
+    }
+
+    const DASH_TOOLS = [
+        { id: 'stations', title: 'Wachen', render: renderStationsTool },
+        { id: 'expansion', title: 'Ausbau', render: renderExpansionTool },
+        { id: 'aao', title: 'AAO', render: renderAaoTool },
+        { id: 'settings', title: 'Einstellungen', render: renderSettingsTool },
+    ];
+
+    // Das Dashboard ist eine Werkzeugsammlung: oben die Reiter, darunter das gewählte Werkzeug
+    function openDashboard(onlyBuildingId, startTool) {
         addStyles();
         document.querySelectorAll('#lsshelper-dash-backdrop').forEach(node => node.remove());
-        const el = (tag, cls, text) => {
-            const node = document.createElement(tag);
-            if (cls) node.className = cls;
-            if (text) node.textContent = text;
-            return node;
-        };
-        const button = (text, cls, onClick) => {
-            const btn = el('a', `lsshelper-btn ${cls || ''}`, text);
-            btn.href = '#';
-            btn.addEventListener('click', e => {
-                e.preventDefault();
-                onClick(btn);
-            });
-            return btn;
-        };
-
-        const backdrop = el('div');
+        const backdrop = dashEl('div');
         backdrop.id = 'lsshelper-dash-backdrop';
-        const dash = el('div');
+        const dash = dashEl('div');
         dash.id = 'lsshelper-dash';
         backdrop.append(dash);
         const closeDash = () => {
@@ -1558,7 +1891,7 @@
 
         // Hell/Dunkel: ohne eigene Wahl richtet sich das Dashboard nach dem Spiel bzw. dem System
         const autoDark = document.body.classList.contains('dark') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        const theme = button('', '', () => {
+        const theme = dashButton('', '', () => {
             localStorage.setItem(THEME_KEY, dash.classList.contains('lsshelper-dark') ? 'light' : 'dark');
             applyTheme();
         });
@@ -1570,116 +1903,55 @@
         };
         applyTheme();
 
-        const head = el('div', 'lsshelper-dash-head');
-        const title = el('div', 'lsshelper-dash-title', 'Wachen-Dashboard');
-        title.append(el('small', '', onlyBuildingId ? 'LSS Helper · diese Wache' : 'LSS Helper · alle Wachen'));
-        head.append(title, theme, button('✕', '', closeDash));
-        const status = el('div', 'lsshelper-dash-status', 'Lese Wachen und Fahrzeuge …');
-        const body = el('div', 'lsshelper-dash-body');
-        dash.append(head, status, body);
+        const head = dashEl('div', 'lsshelper-dash-head');
+        const title = dashEl('div', 'lsshelper-dash-title', 'LSS Helper');
+        title.append(dashEl('small', '', onlyBuildingId ? 'Werkzeuge · Wachen-Werkzeug nur für diese Wache' : 'Werkzeuge für Wachen, Ausbau und AAO'));
+        head.append(title, theme, dashButton('✕', '', closeDash));
+        const tabs = dashEl('div', 'lsshelper-dash-tabs');
+        const status = dashEl('div', 'lsshelper-dash-status');
+        const body = dashEl('div', 'lsshelper-dash-body');
+        dash.append(head, tabs, status, body);
         document.body.append(backdrop);
 
-        let plan;
-        try {
-            plan = await planFleet(onlyBuildingId, text => (status.textContent = text));
-        } catch (err) {
-            console.error('[LSS Helper] dashboard', err);
-            status.textContent = `Fehler: ${err.message}`;
-            status.classList.add('lsshelper-dash-failed');
-            return;
-        }
-        const actionable = plan.changes.filter(c => c.kind !== 'info');
-        const ready = `${plan.stations.length} Wachen geprüft · ${actionable.length} Vorschläge · nichts wird geändert, bevor du „übernehmen“ drückst.`;
-        status.textContent = ready;
-
-        // Eine Karte pro Gruppe: Vorschläge je Wache, jeder einzeln abwählbar
-        DASH_GROUPS.forEach(group => {
-            const items = plan.changes.filter(c => group.kinds.includes(c.kind));
-            const card = el('div', 'lsshelper-dash-card');
-            const cardHead = el('div', 'lsshelper-dash-card-head');
-            cardHead.append(el('span', 'lsshelper-dash-card-title', group.title), el('span', `lsshelper-dash-count${items.length ? '' : ' lsshelper-dash-count-ok'}`, items.length ? String(items.length) : '✓'));
-            card.append(cardHead);
-            body.append(card);
-            if (!items.length) {
-                card.append(el('div', 'lsshelper-dash-empty', 'Alles in Ordnung.'));
-                return;
-            }
-
-            const byStation = new Map();
-            items.forEach(c => {
-                const key = c.station ? c.station.building.caption : 'Wachen';
-                byStation.set(key, (byStation.get(key) || []).concat(c));
-            });
-            byStation.forEach((list, caption) => {
-                const station = list[0].station;
-                const stationHead = el('div', 'lsshelper-dash-station', caption);
-                if (station) stationHead.append(el('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats}`));
-                card.append(stationHead);
-                list.forEach(change => {
-                    const row = el('label', 'lsshelper-dash-row');
-                    change.box = el('input');
-                    change.box.type = 'checkbox';
-                    change.box.checked = !change.optional;
-                    row.append(change.box, el('span', '', change.text));
-                    change.row = row;
-                    card.append(row);
-                });
-            });
-
-            const toggle = button('alle an/aus', 'lsshelper-btn-quiet', () => {
-                const open = items.filter(c => !c.done);
-                const allOn = open.every(c => c.box.checked);
-                open.forEach(c => (c.box.checked = !allOn));
-            });
-            const apply = button(group.button, 'lsshelper-btn-primary', async btn => {
-                const todo = items.filter(c => c.box.checked && !c.done);
-                if (!todo.length || btn.dataset.busy) return;
-                btn.dataset.busy = '1';
-                btn.classList.add('lsshelper-btn-busy');
-                let failed = 0;
-                for (const [index, change] of todo.entries()) {
-                    status.textContent = `${group.title}: ${index + 1}/${todo.length} …`;
-                    try {
-                        await APPLY[change.kind](change);
-                        change.done = true;
-                        change.box.disabled = true;
-                        change.row.classList.add('lsshelper-dash-done');
-                    } catch (err) {
-                        failed++;
-                        change.row.append(el('em', '', ` – ${err.message}`));
-                        change.row.classList.add('lsshelper-dash-failed');
+        let fleet = null;
+        let current = 0;
+        const ctx = {
+            body,
+            onlyBuildingId,
+            status: text => {
+                status.textContent = text;
+                status.classList.remove('lsshelper-dash-failed');
+            },
+            // Wachen und Personal werden einmal gelesen und von den Werkzeugen geteilt
+            fleet: () => (fleet = fleet || planFleet(onlyBuildingId, text => ctx.status(text))),
+            open: async id => {
+                const tool = DASH_TOOLS.find(t => t.id === id) || DASH_TOOLS[0];
+                const run = ++current;
+                localStorage.setItem(TAB_KEY, tool.id);
+                tabs.querySelectorAll('a').forEach(tab => tab.classList.toggle('lsshelper-tab-active', tab.dataset.tool === tool.id));
+                // Jedes Öffnen bekommt eine eigene Fläche, damit ein noch ladendes Werkzeug nicht in das nächste schreibt
+                body.textContent = '';
+                const pane = dashEl('div', 'lsshelper-dash-pane');
+                body.append(pane);
+                try {
+                    await tool.render(Object.assign({}, ctx, { body: pane }));
+                } catch (err) {
+                    console.error(`[LSS Helper] ${tool.id}`, err);
+                    // Nach einem Fehler beim Lesen soll der nächste Versuch neu laden
+                    fleet = null;
+                    if (run === current) {
+                        status.textContent = `Fehler: ${err.message}`;
+                        status.classList.add('lsshelper-dash-failed');
                     }
-                    await sleep(250);
                 }
-                delete btn.dataset.busy;
-                btn.classList.remove('lsshelper-btn-busy');
-                status.textContent = `${group.title}: ${todo.length - failed} übernommen${failed ? `, ${failed} fehlgeschlagen` : ''}. Zum Neuberechnen das Dashboard erneut öffnen.`;
-                if (!onlyBuildingId) showDashCount(countOpen(plan.changes));
-            });
-            cardHead.append(toggle, apply);
+            },
+        };
+        DASH_TOOLS.forEach(tool => {
+            const tab = dashButton(tool.title, 'lsshelper-tab', () => ctx.open(tool.id));
+            tab.dataset.tool = tool.id;
+            tabs.append(tab);
         });
-
-        // Lehrgangsbedarf: fehlende Ausbildungen je Wache, mit Sprung zur passenden eigenen Schule oder zu den Verbandslehrgängen
-        const trainings = plan.changes.filter(c => c.kind === 'training');
-        const notes = plan.stations.filter(s => s.note && s.note !== 'kein Personal').map(s => `${s.building.caption}: ${s.note}`);
-        if (trainings.length || notes.length) {
-            const card = el('div', 'lsshelper-dash-card');
-            const cardHead = el('div', 'lsshelper-dash-card-head');
-            cardHead.append(el('span', 'lsshelper-dash-card-title', 'Lehrgangsbedarf'), el('span', 'lsshelper-dash-count lsshelper-dash-count-warn', String(trainings.length + notes.length)));
-            card.append(cardHead);
-            trainings.forEach(change => {
-                const row = el('div', 'lsshelper-dash-note', `${change.station.building.caption} ${change.text} `);
-                const school = plan.buildings.find(b => b.building_type === SCHOOL_TYPES[change.station.building.building_type]);
-                const link = el('a', 'lsshelper-btn lsshelper-btn-quiet', school ? `${school.caption} öffnen` : 'Verbandslehrgänge öffnen');
-                link.href = school ? `/buildings/${school.id}` : '/schoolings';
-                link.target = '_blank';
-                row.append(link);
-                card.append(row);
-            });
-            notes.forEach(text => card.append(el('div', 'lsshelper-dash-note', text)));
-            body.append(card);
-        }
-        if (!onlyBuildingId) showDashCount(countOpen(plan.changes));
+        return ctx.open(startTool || (onlyBuildingId ? 'stations' : localStorage.getItem(TAB_KEY)));
     }
 
     // Zum Öffnen: Eintrag im Profilmenü der Hauptseite (alle Wachen) und Knopf auf jeder Wache (nur diese)
@@ -1707,7 +1979,7 @@
             const item = document.createElement('li');
             item.setAttribute('role', 'presentation');
             open.className = '';
-            open.textContent = 'LSS Helper: Wachen-Dashboard ';
+            open.textContent = 'LSS Helper ';
             item.append(open);
             aao.closest('li').after(item);
             // Zähler offener Vorschläge: am Menüeintrag und am Profil-Symbol, damit man ihn ohne Aufklappen sieht

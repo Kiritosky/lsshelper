@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.18.0
+// @version      0.19.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -168,6 +168,8 @@
         { label: 'LF, RW oder GW-Öl', keys: ['oneof_fire_engine_or_rescue_or_oil_equipment'], texts: ['Löschfahrzeug, Rüstwagen oder Gerätewagen Öl'], types: LF.concat(4, 47, 162, 10, 49), attrs: LF_ATTRS.concat('rw', 'rw_only', 'ab_ruest_rw', 'gwoel', 'gw_oel_only') },
         { label: 'Feuerlöschpumpen', keys: ['water_damage_pump'], texts: ['Feuerlöschpumpe (z. B. LF)', 'Feuerlöschpumpen (z. B. LF)'], types: LF.concat(101, 102), attrs: LF_ATTRS.concat('water_damage_pump') },
         { label: 'Schmutzwasserpumpen', keys: ['pump'], texts: ['Schmutzwasserpumpe', 'Schmutzwasserpumpen'], types: [101, 102], attrs: ['pump'] },
+        { label: 'Waldbrand-TLF', keys: ['brush_truck'], texts: ['Waldbrand-TLF', 'Waldbrandlöschfahrzeug', 'Waldbrandlöschfahrzeuge', 'TLF 3000 W', 'TLF 5000 W', 'GTLF 10000 W'], types: [187, 188, 189], attrs: ['brush_truck'] },
+        { label: 'GW-Waldbrand', keys: ['wildfire_equipment'], texts: ['GW-Waldbrand', 'Anh Waldbrand', 'AB-Waldbrand'], types: [190, 191, 192], attrs: ['wildfire_equipment'] },
         { label: 'GW-Tierrettung', keys: ['animal_rescue'], texts: ['GW-Tierrettung'], types: [185, 186], attrs: ['animal_rescue'] },
 
         // Rettungsdienst / Wasser / SEG
@@ -260,6 +262,26 @@
         d.keys.forEach(k => (DEMAND_BY_KEY[k] = d));
         d.texts.concat(d.label).forEach(t => (DEMAND_BY_TEXT[normalize(t)] = DEMAND_BY_TEXT[normalize(t)] || d));
     });
+
+    // Anforderungen, die das Skript (noch) nicht kennt, z. B. nach einem Spiel-Update: Meist heißt das AAO-Feld
+    // genauso wie die Anforderung – dann lässt sie sich ohne Skript-Update zuordnen.
+    const autoDemands = {};
+    function demandForKey(key) {
+        if (DEMAND_BY_KEY[key]) return DEMAND_BY_KEY[key];
+        if (autoDemands[key] !== undefined) return autoDemands[key];
+        const type = (window.aao_types || []).find(t => t[0] === key);
+        const caption = type && !/^\[missing/.test(type[1]) ? type[1] : key.replace(/_/g, ' ');
+        return (autoDemands[key] = type ? { label: caption, keys: [key], texts: [caption], types: [], attrs: [key], auto: true } : null);
+    }
+
+    // Anforderungen der Einsatzdaten ohne feste Zuordnung im Skript: { key: Anzahl Einsätze }
+    function unknownRequirements(missions) {
+        const unknown = {};
+        Object.values(missions).forEach(m => Object.entries(m.r).forEach(([key, need]) => {
+            if (typeof need === 'number' && !DEMAND_BY_KEY[key] && !INFO_ONLY[key]) unknown[key] = (unknown[key] || 0) + 1;
+        }));
+        return unknown;
+    }
 
     function getMissionType() {
         const help = document.getElementById('mission_help');
@@ -567,6 +589,8 @@
             .lsshelper-dash-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
             #lsshelper-dash a.lsshelper-tab { border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--muted); padding: 6px 14px; font-size: 13px; }
             #lsshelper-dash a.lsshelper-tab-active { background: var(--card); border-color: var(--line); color: var(--text); font-weight: 700; margin-bottom: -1px; }
+            #lsshelper-dash a.lsshelper-dash-link { color: var(--text); text-decoration: underline dotted; cursor: pointer; }
+            #lsshelper-dash a.lsshelper-dash-link:hover { color: var(--accent); }
             .lsshelper-dash-spacer { margin-right: auto; }
             #lsshelper-dash input.lsshelper-dash-search { height: 26px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
             #lsshelper-dash input[type="number"] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
@@ -826,7 +850,7 @@
         const demands = [];
         const infos = [];
         Object.entries(mission.r).forEach(([key, need]) => {
-            const demand = restrictDemand(DEMAND_BY_KEY[key], mission);
+            const demand = restrictDemand(demandForKey(key), mission);
             const chance = (mission.h && mission.h[key]) || 100;
             if (demand && typeof need === 'number' && need > 0) demands.push({ demand, label: chance < 100 ? `${demand.label} (${chance} %)` : demand.label, need, chance, key });
             else infos.push(`ℹ ${INFO_ONLY[key] || key}: ${typeof need === 'object' ? JSON.stringify(need) : need}`);
@@ -1141,6 +1165,53 @@
     // Die übrigen Plätze darf Personal ohne Lehrgang besetzen – ein ELW 2 fährt mit 6 Leuten, wenn einer den Lehrgang hat.
     // prettier-ignore
     const TRAINING = {12:{gw_messtechnik:0},27:{gw_gefahrgut:0},29:{notarzt:0},31:{notarzt:0},33:{gw_hoehenrettung:0},34:{elw2:0},35:{police_einsatzleiter:0},40:{thw_zugtrupp:0},42:{thw_raumen:0},45:{thw_raumen:0},46:{wechsellader:0},51:{police_fukw:0},54:{dekon_p:0},55:{lna:0},56:{orgl:0},57:{fwk:0},59:{seg_elw:0},60:{seg_gw_san:0},61:{polizeihubschrauber:0},63:{gw_taucher:0},64:{gw_wasserrettung:0},66:{gw_wasserrettung:0},67:{gw_wasserrettung:0},68:{gw_wasserrettung:0},69:{gw_taucher:0},70:{gw_wasserrettung:0},71:{gw_wasserrettung:0},72:{police_wasserwerfer:0},73:{notarzt:1},74:{notarzt:1},75:{arff:0},76:{rettungstreppe:0},77:{gw_gefahrgut:0},78:{elw2:0},79:{police_sek:0},80:{police_sek:0},81:{police_mek:0},82:{police_mek:0},83:{werkfeuerwehr:0},84:{werkfeuerwehr:0},85:{werkfeuerwehr:0},86:{werkfeuerwehr:0},91:{seg_rescue_dogs:0},92:{thw_rescue_dogs:0},94:{k9:0},95:{police_motorcycle:0},96:{police_firefighting:0},97:{intensive_care:2,notarzt:1},98:{criminal_investigation:0},100:{water_damage_pump:0},101:{water_damage_pump:1},102:{water_damage_pump:1},103:{police_service_group_leader:1},109:{heavy_rescue:0},112:{thw_energy_supply:1},113:{energy_supply:1},125:{thw_drone:0},126:{fire_drone:4},127:{seg_drone:0},128:{fire_drone:0},129:{fire_drone:0,elw2:0},130:{care_service:1,care_service_equipment:2},131:{care_service:0},133:{care_service:1,care_service_equipment:2},134:{police_horse:2},138:{fire_care_service:1,care_service_equipment:2},139:{fire_care_service:1,care_service_equipment:2},140:{fire_care_service:0},144:{thw_command:0},145:{thw_command:0},147:{thw_command:0},148:{thw_command:0},149:{notarzt:1},151:{mountain_command:0},153:{seg_rescue_dogs:0},155:{mountain_height_rescue:4},156:{polizeihubschrauber:1,police_helicopter_lift:1},157:{rescue_helicopter_lift:1,notarzt:1},158:{mountain_height_rescue:0},159:{coastal_rescue:0},161:{coastal_helicopter:1,coastal_helicopter_lift:1,emergency_paramedic_water_rescue:1},162:{railway_fire:0},163:{railway_fire:0},165:{police_speaker_operator:0},171:{disaster_response_technology:0},172:{disaster_response_technology:1},173:{disaster_response_technology:1},174:{disaster_response_technology:2},175:{disaster_response_technology:2},176:{thw_care_service:1,care_service_equipment:2},177:{thw_care_service:0},180:{energy_supply:1},181:{thw_bridge_construction:0},182:{thw_bridge_construction_crane:0},183:{thw_bridge_construction:6},184:{highway_police:0}};
+
+    // Waldbrand-Update (Typen 187–192): Besatzung aus der Kaufseite des Spiels; der Lehrgang kommt mit den Fahrzeugdaten unten nach
+    [187, 188, 189, 190].forEach(type => (STAFF[type] = [1, 3]));
+    [191, 192].forEach(type => (STAFF[type] = [0, 0]));
+
+    // Fahrzeugdaten (Besatzung, Lehrgänge) aktualisieren sich täglich aus der offenen Datenbank des LSS-Managers,
+    // damit neue Fahrzeuge nach einem Spiel-Update ohne Skript-Update bekannt werden. Die Tabellen oben sind der Rückfall.
+    const VEHICLE_DATA_KEY = 'lsshelper_vehicle_data';
+
+    function applyVehicleData(data) {
+        if (!data || !data.staff) return;
+        Object.entries(data.staff).forEach(([type, staff]) => {
+            STAFF[type] = staff;
+            if (data.training[type]) TRAINING[type] = data.training[type];
+            else delete TRAINING[type];
+        });
+    }
+
+    async function refreshVehicleData() {
+        let cached = null;
+        try {
+            cached = JSON.parse(localStorage.getItem(VEHICLE_DATA_KEY) || 'null');
+        } catch (e) {
+            /* neu laden */
+        }
+        if (cached && Date.now() - cached.t < CACHE_TTL) return;
+        const vehicles = await (await fetch('https://api.lss-manager.de/de_DE/vehicles')).json();
+        const data = { t: Date.now(), staff: {}, training: {} };
+        Object.entries(vehicles).forEach(([type, vehicle]) => {
+            if (!vehicle.staff) return;
+            data.staff[type] = [vehicle.staff.min || 0, vehicle.staff.max || 0];
+            const required = {};
+            Object.values(vehicle.staff.training || {}).forEach(school => Object.entries(school).forEach(([key, rule]) => {
+                const amount = rule.all ? 1 : rule.min || 0;
+                if (amount > 0) required[key] = amount;
+            }));
+            if (Object.keys(required).length) data.training[type] = required;
+        });
+        localStorage.setItem(VEHICLE_DATA_KEY, JSON.stringify(data));
+        applyVehicleData(data);
+    }
+
+    try {
+        applyVehicleData(JSON.parse(localStorage.getItem(VEHICLE_DATA_KEY) || 'null'));
+    } catch (e) {
+        /* eingebaute Tabellen bleiben */
+    }
 
     // Lehrgang -> Bezeichnung in der Personalliste
     // prettier-ignore
@@ -1481,6 +1552,22 @@
         return card;
     }
 
+    // Überschrift einer Wache; ein Klick öffnet das Gebäude im Fenster des Spiels (selber Tab), z. B. um dort auszubauen
+    function stationHeading(ctx, building) {
+        const head = dashEl('div', 'lsshelper-dash-station');
+        const link = dashEl('a', 'lsshelper-dash-link', building.caption);
+        link.href = `/buildings/${building.id}`;
+        link.title = 'Gebäude öffnen';
+        link.addEventListener('click', e => {
+            if (e.button || e.ctrlKey || e.metaKey || e.shiftKey || typeof window.lightboxOpen !== 'function') return;
+            e.preventDefault();
+            ctx.close();
+            window.lightboxOpen(link.getAttribute('href'));
+        });
+        head.append(link);
+        return head;
+    }
+
     // Führt angehakte Vorschläge nacheinander aus und markiert jede Zeile als erledigt oder fehlgeschlagen
     async function applyChanges(todo, label, ctx, btn) {
         if (!todo.length || btn.dataset.busy) return;
@@ -1515,6 +1602,19 @@
         ctx.status(`${plan.stations.length} Wachen geprüft · ${actionable.length} Vorschläge · nichts wird geändert, bevor du „übernehmen“ drückst.`);
         const updateCount = () => !ctx.onlyBuildingId && showDashCount(countOpen(plan.changes));
 
+        // Neu im Spiel: Anforderungen und Fahrzeugtypen, die das Skript nach einem Spiel-Update noch nicht kennt
+        const unknown = unknownRequirements(await getMissions());
+        const newTypes = Array.from(new Set(plan.stations.flatMap(s => s.vehicles).filter(v => !STAFF[v.type]).map(v => `${v.caption} (Typ ${v.type})`)));
+        if (Object.keys(unknown).length || newTypes.length) {
+            const card = dashCard(ctx.body, 'Neu im Spiel', Object.keys(unknown).length + newTypes.length, 'lsshelper-dash-count-warn');
+            card.append(dashEl('div', 'lsshelper-dash-empty', 'Das Spiel kennt Dinge, die dem Skript noch fehlen. Neue Einsätze kommen von selbst, für diese Punkte braucht es ein Skript-Update:'));
+            Object.entries(unknown).forEach(([key, count]) => {
+                const auto = demandForKey(key);
+                card.append(dashEl('div', 'lsshelper-dash-note', `Anforderung „${key}“ in ${count} Einsätzen – ${auto ? `vorläufig dem AAO-Feld „${auto.label}“ zugeordnet` : 'keine Zuordnung, erscheint nur als Info-Zeile'}`));
+            });
+            newTypes.forEach(text => card.append(dashEl('div', 'lsshelper-dash-note', `Fahrzeug ${text}: Besatzung und Lehrgang unbekannt, bei Sitzlimits übersprungen`)));
+        }
+
         // Neues Fahrzeug fertig einrichten: Name, Sitzlimit und Lehrgangspersonal in einem Rutsch
         if (actionable.length) {
             const card = dashCard(ctx.body, 'Alles auf einmal', actionable.length);
@@ -1540,7 +1640,7 @@
             });
             byStation.forEach((list, caption) => {
                 const station = list[0].station;
-                const stationHead = dashEl('div', 'lsshelper-dash-station', caption);
+                const stationHead = station ? stationHeading(ctx, station.building) : dashEl('div', 'lsshelper-dash-station', caption);
                 if (station) stationHead.append(dashEl('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats}`));
                 card.append(stationHead);
                 list.forEach(change => {
@@ -1647,7 +1747,7 @@
             const slots = building.level + 1;
             const used = station.vehicles.filter(v => v.max > 0).length;
             const fits = typical ? Math.floor(free / typical[1]) : 0;
-            const head = dashEl('div', 'lsshelper-dash-station', building.caption);
+            const head = stationHeading(ctx, building);
             head.append(dashEl('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats} · Stellplätze ${used}/${slots}`));
             const room = slots - used;
             const need = Math.max(0, fits - room);
@@ -1918,6 +2018,7 @@
         const ctx = {
             body,
             onlyBuildingId,
+            close: closeDash,
             status: text => {
                 status.textContent = text;
                 status.classList.remove('lsshelper-dash-failed');
@@ -2016,6 +2117,7 @@
     const FEATURES = [
         // Einsatzdaten im Hauptfenster vorladen, damit Einsatzfenster nicht warten müssen
         { name: 'preloadMissions', match: /^\/$/, run: getMissions },
+        { name: 'refreshVehicleData', match: /^\/$/, run: refreshVehicleData },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },

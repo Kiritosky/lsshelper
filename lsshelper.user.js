@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.22.0
+// @version      0.22.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -528,7 +528,14 @@
                 const best = fitting.length ? Math.max(...pool.map(c => c.amount)) : Math.min(...pool.map(c => c.amount));
                 hits = pool.filter(c => c.amount === best);
             }
-            return { label, need, present, hits: hits.map(h => ({ aao: h.aao, clicks: Math.ceil(need / h.amount) })) };
+            // Gleich gut passende AAOs: zuerst die mit freien Fahrzeugen, dann Fahrzeug vor Abrollbehälter
+            const rank = c => (aaoAvailable(c.aao) === false ? 2 : 0) + (isContainerAao(c.aao) ? 1 : 0);
+            // Markiert werden nur die besten; die Taste darf auf die übrigen ausweichen, falls die besten doch nicht gehen
+            hits.sort((a, b) => rank(a) - rank(b));
+            const withClicks = list => list.map(h => ({ aao: h.aao, clicks: Math.ceil(need / h.amount) }));
+            const options = withClicks(hits);
+            if (hits.length) hits = hits.filter(c => rank(c) === rank(hits[0]));
+            return { label, need, present, hits: withClicks(hits), options };
         });
     }
 
@@ -641,7 +648,7 @@
             item.textContent = text;
             panel.append(item);
         });
-        if (settings.hotkey && hotkeyTargets.size) {
+        if (settings.hotkey && hotkeyChoices.length) {
             const hint = document.createElement('span');
             hint.className = 'lsshelper-item';
             hint.textContent = `⌨ Taste „${settings.hotkey.toUpperCase()}“ wählt die Markierung aus`;
@@ -649,8 +656,25 @@
         }
     }
 
-    // Was die Taste auswählt: AAO -> Anzahl Klicks. Pro Bedarf nur eine AAO, auch wenn mehrere gleich gut passen.
-    const hotkeyTargets = new Map();
+    // Was die Taste auswählen kann: pro Bedarf die passenden AAOs ({ aao, clicks }), beste zuerst.
+    // Welche davon geklickt wird, entscheidet sich erst beim Drücken – dann zeigt das Spiel an, was gerade verfügbar ist.
+    const hotkeyChoices = [];
+
+    // Verfügbarkeit laut Spiel (grüner Haken / rotes Kreuz an der AAO); null, solange das Spiel noch rechnet
+    function aaoAvailable(aao) {
+        const label = document.getElementById(`available_aao_${aao.getAttribute('aao_id')}`);
+        if (!label) return null;
+        if (/label-success/.test(label.className)) return true;
+        if (/label-danger/.test(label.className)) return false;
+        return null;
+    }
+
+    // Abrollbehälter-AAOs erkennt man am Namen oder an AB-Feldern ("AB-Öl", ab_oel_only, abl2wasser_only …)
+    const isContainerAao = aao =>
+        /^\s*AB[- ]/i.test(aao.textContent.replace(/\d+×/, '')) || Array.from(aao.attributes).some(a => /^(ab_|only_ab_|abl2)/.test(a.name) && parseInt(a.value) > 0);
+
+    // Erst eine AAO, deren Fahrzeuge frei sind; sonst lieber ein Fahrzeug als einen Abrollbehälter
+    const preferredHit = hits => hits.find(h => aaoAvailable(h.aao) === true) || hits.find(h => !isContainerAao(h.aao)) || hits[0];
 
     let hotkeyBusy = false;
     // Wird die Taste gedrückt, bevor die Markierung fertig berechnet ist, wird sie danach nachgeholt
@@ -661,7 +685,12 @@
         if (hotkeyBusy) return;
         hotkeyBusy = true;
         try {
-            for (const [aao, clicks] of Array.from(hotkeyTargets.entries())) {
+            const targets = new Map();
+            hotkeyChoices.forEach(hits => {
+                const hit = preferredHit(hits);
+                targets.set(hit.aao, Math.max(hit.clicks, targets.get(hit.aao) || 0));
+            });
+            for (const [aao, clicks] of targets) {
                 for (let i = 0; i < clicks; i++) {
                     aao.click();
                     await sleep(120);
@@ -678,7 +707,7 @@
     function triggerHotkey() {
         if (!settings.hotkey) return false;
         if (!hotkeyReady) return (hotkeyPending = true);
-        if (!hotkeyTargets.size) return false;
+        if (!hotkeyChoices.length) return false;
         pressHotkey();
         return true;
     }
@@ -721,7 +750,7 @@
         const open = demands.filter(d => d.need > 0 && !rare(d));
         const items = resolveDemands(open, aaos, parsed).map(r => {
             r.hits.forEach(h => clicksByAao.set(h.aao, Math.max(h.clicks, clicksByAao.get(h.aao) || 0)));
-            if (r.hits[0] && settings.markVehicles) hotkeyTargets.set(r.hits[0].aao, Math.max(r.hits[0].clicks, hotkeyTargets.get(r.hits[0].aao) || 0));
+            if (r.options.length && settings.markVehicles) hotkeyChoices.push(r.options);
             return `${r.hits.length ? '✓' : '✗'} ${r.need}× ${r.label}${r.present ? ` (${r.present} schon alarmiert/angehakt)` : ''}`;
         });
         demands.filter(d => d.need > 0 && rare(d)).forEach(d => items.push(`○ evtl. ${d.need}× ${d.label}`));
@@ -843,9 +872,9 @@
                 .then(missions => recordShortages(missions[type] || missions[type.split(/[-/]/)[0]], present))
                 .catch(log);
         }
-        hotkeyTargets.clear();
+        hotkeyChoices.length = 0;
         const showName = byName => {
-            hotkeyTargets.set(byName[0], 1);
+            hotkeyChoices.push([{ aao: byName[0], clicks: 1 }]);
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
             renderPanel(container, `LSS Helper: AAO „${byName[0].textContent.trim()}“ passt zum Einsatz.`, []);
         };

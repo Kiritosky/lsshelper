@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.21.0
+// @version      0.22.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -593,6 +593,11 @@
             #lsshelper-dash a.lsshelper-tab-active { background: var(--card); border-color: var(--line); color: var(--text); font-weight: 700; margin-bottom: -1px; }
             #lsshelper-dash a.lsshelper-dash-link { color: var(--text); text-decoration: underline dotted; cursor: pointer; }
             #lsshelper-dash a.lsshelper-dash-link:hover { color: var(--accent); }
+            #lsshelper-dash table.lsshelper-dash-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; color: var(--text); background: transparent; }
+            #lsshelper-dash table.lsshelper-dash-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; background: transparent; }
+            #lsshelper-dash table.lsshelper-dash-table td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; background: transparent; }
+            #lsshelper-dash table.lsshelper-dash-table tr:hover td { background: var(--bg); }
+            #lsshelper-dash table.lsshelper-dash-table td:first-child { font-weight: 600; }
             .lsshelper-dash-spacer { margin-right: auto; }
             #lsshelper-dash input.lsshelper-dash-search { height: 26px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
             #lsshelper-dash input.lsshelper-dash-key { width: 34px; text-align: center; text-transform: uppercase; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
@@ -832,6 +837,12 @@
         const present = presentVehicles();
         // Einsatz wurde schon bearbeitet: nicht noch einmal die ganze AAO vorschlagen, nur den Rest
         const dispatched = settings.subtractPresent && present.driving.length + present.atScene.length + present.selected.length > 0;
+        // Statistik für den Fahrzeugbedarf im Dashboard: beim ersten Öffnen festhalten, was nicht in ausreichender Zahl frei ist
+        if (type) {
+            getMissions()
+                .then(missions => recordShortages(missions[type] || missions[type.split(/[-/]/)[0]], present))
+                .catch(log);
+        }
         hotkeyTargets.clear();
         const showName = byName => {
             hotkeyTargets.set(byName[0], 1);
@@ -1267,17 +1278,17 @@
     [191, 192].forEach(type => (STAFF[type] = [0, 0]));
 
     // Bezeichnungen aus den Spieldaten: Anforderungen und Voraussetzungen (Schlüssel -> deutscher Name)
-    const dataLabels = { req: {}, pre: {} };
+    // ... sowie Fahrzeugnamen, wo ein Fahrzeug gekauft werden kann, und offizielle Gebäudenamen
+    const dataLabels = { req: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,
     // Lehrgangsnamen aus der offiziellen Schnittstelle des Spiels. Die Tabellen oben sind der Rückfall.
-    const VEHICLE_DATA_KEY = 'lsshelper_game_data_v2';
+    const VEHICLE_DATA_KEY = 'lsshelper_game_data_v3';
 
     function applyVehicleData(data) {
         if (!data || !data.staff) return;
-        Object.assign(dataLabels.req, data.req);
-        Object.assign(dataLabels.pre, data.pre);
+        ['req', 'pre', 'vehicles', 'possible', 'buildings'].forEach(key => Object.assign(dataLabels[key], data[key]));
         Object.entries(data.staff).forEach(([type, staff]) => {
             STAFF[type] = staff;
             if (data.training[type]) TRAINING[type] = data.training[type];
@@ -1294,7 +1305,7 @@
         }
         if (cached && Date.now() - cached.t < CACHE_TTL) return;
         const vehicles = await (await fetch('https://api.lss-manager.de/de_DE/vehicles')).json();
-        const data = { t: Date.now(), staff: {}, training: {}, names: {}, req: {}, pre: {} };
+        const data = { t: Date.now(), staff: {}, training: {}, names: {}, req: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
         // Die Zusatzquellen dürfen fehlen – dann bleibt es bei den eingebauten Bezeichnungen
         await sleep(150);
         const labels = await fetch('https://api.lss-manager.de/de_DE/einsaetze').then(r => r.json()).catch(() => ({}));
@@ -1303,10 +1314,13 @@
         Object.entries(labels.prerequisites || {}).forEach(([key, text]) => (data.pre[key] = singular(text)));
         await sleep(150);
         const game = await fetch('/api/mission_type_data').then(r => r.json()).catch(() => ({}));
+        (game.building_types || []).forEach(type => (data.buildings[type.id] = type.caption));
         (game.education_data || []).forEach(education => {
             if (education.education_key) data.names[education.education_key] = education.caption.replace(/ Lehrgang$/, '');
         });
         Object.entries(vehicles).forEach(([type, vehicle]) => {
+            data.vehicles[type] = vehicle.caption;
+            data.possible[type] = vehicle.possibleBuildings || [];
             if (!vehicle.staff) return;
             data.staff[type] = [vehicle.staff.min || 0, vehicle.staff.max || 0];
             const required = {};
@@ -1543,8 +1557,40 @@
     }
 
     // Liest alle Wachen und berechnet die Vorschläge: [{ kind, station, text, ... }]
+    // Gebäude und Fahrzeuge: nacheinander geladen (Fair-Use) und kurz zwischengespeichert, damit Werkzeuge sie teilen
+    const BASICS_TTL = 60 * 1000;
+    function loadBasics(force) {
+        if (force || !shared.basics || Date.now() - shared.basics.t > BASICS_TTL) {
+            const promise = (async () => {
+                const buildings = await fetchJson('/api/buildings');
+                await sleep(100);
+                return { buildings, vehicles: await fetchJson('/api/vehicles') };
+            })();
+            shared.basics = { t: Date.now(), promise };
+            promise.catch(() => (shared.basics = null));
+        }
+        return shared.basics.promise;
+    }
+
+    // Personallisten ändern sich selten: 10 Minuten im Speicher halten
+    const PERSONNEL_TTL = 10 * 60 * 1000;
+    async function cachedPersonnel(buildingId) {
+        shared.personnel = shared.personnel || {};
+        const hit = shared.personnel[buildingId];
+        if (hit && Date.now() - hit.t < PERSONNEL_TTL) return { persons: hit.persons, cached: true };
+        const persons = await loadPersonnel(buildingId);
+        shared.personnel[buildingId] = { t: Date.now(), persons };
+        return { persons, cached: false };
+    }
+
+    // Nach Änderungen im Spiel neu lesen
+    function forgetFleet() {
+        shared.basics = null;
+        shared.personnel = {};
+    }
+
     async function planFleet(onlyBuildingId, onProgress) {
-        const [buildings, allVehicles] = await Promise.all([fetchJson('/api/buildings'), fetchJson('/api/vehicles')]);
+        const { buildings, vehicles: allVehicles } = await loadBasics();
         const stations = buildings
             .map(building => ({
                 building,
@@ -1560,11 +1606,21 @@
 
         const changes = [];
         for (const [index, station] of stations.entries()) {
-            onProgress(`Lese Personal … ${index + 1}/${stations.length} (${station.building.caption})`);
-            const persons = await loadPersonnel(station.building.id).catch(() => []);
             const crewed = station.vehicles.filter(v => v.max > 0);
-            station.personnel = persons.length;
             station.seats = crewed.reduce((sum, v) => sum + v.max, 0);
+            // Die Personalliste (eine Abfrage pro Wache) wird nur gebraucht, wenn Lehrgänge im Spiel sind oder das Personal knapp ist;
+            // sonst reicht die Personalzahl aus den Gebäudedaten
+            const needsList = crewed.some(v => TRAINING[v.type]) || station.building.personal_count < station.seats;
+            let persons;
+            if (needsList) {
+                onProgress(`Lese Personal … ${index + 1}/${stations.length} (${station.building.caption})`);
+                const result = await cachedPersonnel(station.building.id).catch(() => ({ persons: [], cached: true }));
+                persons = result.persons;
+                if (!result.cached) await sleep(100);
+            } else {
+                persons = Array.from({ length: station.building.personal_count }, () => ({ id: null, name: '', edu: new Set(), bound: '' }));
+            }
+            station.personnel = persons.length;
             if (!persons.length) {
                 station.note = station.building.personal_count ? 'Personalliste nicht lesbar – übersprungen' : 'kein Personal';
                 continue;
@@ -1594,7 +1650,6 @@
                 const missing = need - persons.filter(p => p.edu.has(key)).length;
                 if (missing > 0) changes.push({ kind: 'training', station, text: `braucht noch ${missing}× ${TRAINING_NAMES[key] || key} (für ${vehicles.join(', ')})` });
             });
-            await sleep(100);
         }
         if (!onlyBuildingId) changes.push(...planLeitstellen(buildings), ...planBuildingNames(buildings));
         else changes.push(...planLeitstellen(buildings).filter(c => String(c.building.id) === String(onlyBuildingId)));
@@ -1710,6 +1765,7 @@
             }
             await sleep(250);
         }
+        forgetFleet();
         delete btn.dataset.busy;
         btn.classList.remove('lsshelper-btn-busy');
         ctx.status(`${label}: ${todo.length - failed} übernommen${failed ? `, ${failed} fehlgeschlagen` : ''}. Zum Neuberechnen das Werkzeug erneut öffnen.`);
@@ -1808,39 +1864,92 @@
 
     /* ---------------- Werkzeug: Ausbau ---------------- */
 
-    // Wachentyp -> typisches Fahrzeug und dessen Sitzplätze, um freies Personal in Fahrzeuge umzurechnen
-    const TYPICAL_VEHICLE = { 0: ['LF 20', 9], 18: ['LF 20', 9], 2: ['RTW', 2], 20: ['RTW', 2], 6: ['FuStW', 2], 19: ['FuStW', 2], 9: ['GKW', 9], 25: ['GW-Bergrettung', 6] };
-
-    // Voraussetzung in den Einsatzdaten -> Gebäudetypen, die dafür zählen
-    const COUNT_KEYS = {
-        fire_stations: { types: [0, 18], label: 'Feuerwachen' },
-        rescue_stations: { types: [2, 20], label: 'Rettungswachen' },
-        police_stations: { types: [6, 19], label: 'Polizeiwachen' },
-        thw: { types: [9], label: 'THW-Ortsverbände' },
-        bereitschaftspolizei: { types: [11], label: 'Bereitschaftspolizei-Wachen' },
-        wasserrettung: { types: [15], label: 'Wasserrettungswachen' },
-        mountain_rescue: { types: [25], label: 'Bergrettungswachen' },
-        police_helicopter_stations: { types: [13], label: 'Polizeihubschrauber-Stationen' },
-        seg: { types: [12], label: 'SEG-Wachen' },
-        coastal_rescue_count: { types: [26], label: 'Seenotrettungswachen' },
+    // Voraussetzungen der Einsätze -> wie sie sich aus den eigenen Gebäuden zählen lassen:
+    // base = Gebäudetypen, die selbst zählen; ext = Erweiterungen (Name laut Spiel) auf Gebäuden der Typen in "on"
+    const PREREQ_RULES = {
+        fire_stations: { base: [0, 18] },
+        rescue_stations: { base: [2, 20] },
+        police_stations: { base: [6, 19] },
+        thw: { base: [9] },
+        bereitschaftspolizei: { base: [11] },
+        seg: { base: [12] },
+        police_helicopter_stations: { base: [13] },
+        mountain_rescue: { base: [25] },
+        coastal_rescue_count: { base: [26] },
+        water_rescue_heliport_count: { base: [28] },
+        wasserrettung: { base: [15], on: [0, 12], ext: /^Wasserrettung$/ },
+        highway_police: { base: [29], on: [6], ext: /Autobahnpolizei/ },
+        rescue_dog_units: { base: [21], on: [12, 25], ext: /Rettungshundestaffel/ },
+        police_horse: { base: [24], on: [11, 24], ext: /Reiterstaffel/ },
+        riot_unit_count: { base: [11], on: [11], ext: /Zug der 1\. Hundertschaft/ },
+        thw_gkw_count: { base: [9], on: [9], ext: /Bergungsgruppe/ },
+        thw_zugtrupp_count: { on: [9], ext: /Zugtrupp/ },
+        thw_bergung_count: { on: [9], ext: /Notversorgung/ },
+        thw_fg_raeumen_count: { on: [9], ext: /Fachgruppe Räumen/ },
+        heavy_rescue: { on: [9], ext: /Schwere Bergung/ },
+        thw_command: { on: [9], ext: /Führung und Kommunikation/ },
+        water_damage_pump_count: { on: [9], ext: /Wasserschaden/ },
+        thw_bridge_construction: { on: [9], ext: /Brückenbau/ },
+        drone: { on: [0, 9, 12, 25], ext: /Drohne|Unbemannte Luftfahrt/ },
+        wildfire: { on: [0], ext: /Wald- und Vegetation/ },
+        ventilation: { on: [0], ext: /Großlüfter/ },
+        fire_care_service: { on: [0], ext: /^Verpflegungsdienst$/ },
+        railway_fire: { on: [0], ext: /Bahnrettung/ },
+        energy_supply: { on: [0], ext: /Netzersatzanlage 50/ },
+        energy_supply_2: { on: [0], ext: /Netzersatzanlage 200/ },
+        werkfeuerwehr: { on: [0], ext: /Werkfeuerwehr/ },
+        animal_rescue: { on: [0], ext: /Tierrettung/ },
+        care_service: { on: [12], ext: /Betreuungs- und Verpflegungsdienst/ },
+        disaster_response_technology: { on: [12], ext: /Technik und Sicherheit/ },
+        police_service_group_leader: { on: [6], ext: /Dienstgruppenleitung/ },
+        criminal_investigation_count: { on: [6], ext: /Kriminalpolizei/ },
+        police_motorcycle: { on: [6], ext: /Motorradstaffel/ },
+        guard_dog_count: { on: [6, 11, 17], ext: /Diensthundestaffel/ },
+        police_speaker: { on: [11], ext: /Lautsprecherkraftwagen/ },
+        detention_unit_count: { on: [11], ext: /Gefangenenkraftwagen/ },
+        water_cannon: { on: [11], ext: /Wasserwerfer/ },
+        mek: { on: [11, 17], ext: /^MEK/ },
+        sek: { on: [11, 17], ext: /^SEK/ },
+        lift: { on: [5, 13], ext: /Windenrettung/ },
+        mountain_height_rescue: { on: [25], ext: /Höhenrettung/ },
     };
-    const BUILDING_NAMES = { 0: 'Feuerwache', 2: 'Rettungswache', 5: 'Rettungshubschrauber-Station', 6: 'Polizeiwache', 9: 'THW-Ortsverband', 11: 'Bereitschaftspolizei', 12: 'SEG', 13: 'Polizeihubschrauber-Station', 15: 'Wasserrettung', 17: 'Polizei-Sondereinheiten', 21: 'Rettungshundestaffel', 24: 'Reiterstaffel', 25: 'Bergrettungswache', 26: 'Seenotrettungswache' };
+    // Rückfall-Namen, falls die Spieldaten (dataLabels) noch nicht geladen sind
+    const BUILDING_NAMES = { 0: 'Feuerwache', 2: 'Rettungswache', 5: 'Rettungshubschrauber-Station', 6: 'Polizeiwache', 9: 'THW', 11: 'Bereitschaftspolizei', 12: 'Schnelleinsatzgruppe (SEG)', 13: 'Polizeihubschrauberstation', 15: 'Wasserrettung', 17: 'Polizei-Sondereinheiten', 21: 'Rettungshundestaffel', 24: 'Reiterstaffel', 25: 'Bergrettungswache', 26: 'Seenotrettungswache', 28: 'Hubschrauberstation (Seenotrettung)', 29: 'Autobahnpolizei' };
+    const buildingName = type => dataLabels.buildings[type] || BUILDING_NAMES[type] || `Gebäudetyp ${type}`;
+    const prereqName = key => dataLabels.pre[key] || key.replace(/_/g, ' ');
 
-    // Prüft die Voraussetzungen eines Einsatzes gegen die eigenen Gebäude.
-    // unknown = Voraussetzungen (meist Erweiterungen), die sich aus den Gebäudedaten nicht sicher ablesen lassen.
+    // Zählt pro Voraussetzung, was die eigenen Gebäude hergeben (einmal pro Gebäudeliste)
+    const prereqCache = new WeakMap();
+    function prereqCounts(buildings) {
+        if (prereqCache.has(buildings)) return prereqCache.get(buildings);
+        const counts = {};
+        Object.entries(PREREQ_RULES).forEach(([key, rule]) => {
+            let have = buildings.filter(b => (rule.base || []).includes(b.building_type)).length;
+            if (rule.ext) {
+                buildings.filter(b => rule.on.includes(b.building_type)).forEach(b => {
+                    have += (b.extensions || []).filter(e => e.available !== false && e.enabled !== false && rule.ext.test(e.caption)).length;
+                });
+            }
+            counts[key] = have;
+        });
+        prereqCache.set(buildings, counts);
+        return counts;
+    }
+
+    // Prüft die Voraussetzungen eines Einsatzes gegen die eigenen Gebäude und Erweiterungen.
+    // unknown = Voraussetzungen, die das Skript nicht zählen kann.
     function missionAccess(mission, buildings) {
-        const count = types => buildings.filter(b => types.includes(b.building_type)).length;
+        const counts = prereqCounts(buildings);
         const result = { unmet: [], unknown: [], mainMissing: null, capped: false };
         Object.entries(mission.q || {}).forEach(([key, value]) => {
             if (key === 'main_building') {
                 const same = { 0: [0, 18], 2: [2, 20], 6: [6, 19] }[value] || [value];
-                if (!count(same)) result.mainMissing = value;
-            } else if (COUNT_KEYS[key]) {
-                const have = count(COUNT_KEYS[key].types);
-                if (have < value) result.unmet.push({ key, value, have });
+                if (value >= 0 && !buildings.some(b => same.includes(b.building_type))) result.mainMissing = value;
+            } else if (key in counts) {
+                if (counts[key] < value) result.unmet.push({ key, value, have: counts[key] });
             } else if (key.startsWith('max_')) {
-                const base = COUNT_KEYS[key.slice(4)];
-                if (base && count(base.types) > value) result.capped = true;
+                const base = key.slice(4);
+                if (base in counts && counts[base] > value) result.capped = true;
             } else if (value > 0) {
                 result.unknown.push(key);
             }
@@ -1851,84 +1960,220 @@
     // Grundeinsätze ohne Varianten, Verbands-, Folge- und Zeiteinsätze
     const baseMissions = missions => Object.entries(missions).filter(([id, m]) => /^\d+$/.test(id) && !m.x);
 
-    async function renderExpansionTool(ctx) {
-        ctx.status('Lese Wachen und Einsatzdaten …');
-        const [plan, missions] = await Promise.all([ctx.fleet(), getMissions()]);
-        ctx.status('Auswertung aus deinen Gebäuden und den Einsatzdaten des Spiels. Hier wird nichts geändert.');
+    /* ---------------- Werkstatt-Statistik: zu wenig verfügbare Fahrzeuge ---------------- */
 
-        // Wo freies Personal steht und was es dort bringen würde
-        const spare = plan.stations
-            .filter(s => !s.note && s.personnel > s.seats)
-            .map(s => ({ station: s, free: s.personnel - s.seats }))
-            .sort((a, b) => b.free - a.free);
-        const card = dashCard(ctx.body, 'Ausbau-Vorschlag', spare.length || '✓', spare.length ? '' : 'lsshelper-dash-count-ok');
-        if (!spare.length) card.append(dashEl('div', 'lsshelper-dash-empty', 'Auf keiner Wache steht Personal ohne Sitzplatz.'));
-        spare.forEach(({ station, free }) => {
-            const building = station.building;
-            const typical = TYPICAL_VEHICLE[building.building_type];
-            const slots = building.level + 1;
-            const used = station.vehicles.filter(v => v.max > 0).length;
-            const fits = typical ? Math.floor(free / typical[1]) : 0;
-            const head = stationHeading(ctx, building);
-            head.append(dashEl('small', '', `Personal ${station.personnel} · Sitzplätze ${station.seats} · Stellplätze ${used}/${slots}`));
-            const room = slots - used;
-            const need = Math.max(0, fits - room);
-            const text = fits
-                ? `${free} Leute ohne Sitzplatz – reicht für ${fits}× ${typical[0]}. ${room > 0 ? `${room} Stellplatz${room > 1 ? 'plätze' : ''} frei` : 'Kein Stellplatz frei'}${need ? `, dafür ${need} Ausbaustufe${need > 1 ? 'n' : ''} nötig` : ''}.`
-                : `${free} Leute ohne Sitzplatz.`;
-            card.append(head, dashEl('div', 'lsshelper-dash-note', text));
+    // Im Einsatzfenster mitgezählt: welche Fahrzeuge beim ersten Öffnen eines Einsatzes nicht in ausreichender Zahl frei waren
+    const SHORTAGE_KEY = 'lsshelper_shortages';
+
+    function readShortages() {
+        try {
+            const stats = JSON.parse(localStorage.getItem(SHORTAGE_KEY) || 'null');
+            if (stats && stats.counts) return stats;
+        } catch (e) {
+            /* neu beginnen */
+        }
+        return { since: Date.now(), counts: {}, seen: [] };
+    }
+
+    function recordShortages(mission, present) {
+        const id = (location.pathname.match(/^\/missions\/(\d+)/) || [])[1];
+        if (!id || !mission) return;
+        const stats = readShortages();
+        if (stats.seen.includes(id)) return;
+        const free = Array.from(document.querySelectorAll('#vehicle_show_table_body_all .vehicle_checkbox'))
+            .map(box => parseInt(box.getAttribute('vehicle_type_id')))
+            .filter(type => !isNaN(type));
+        const demands = missionDemands(mission, document.querySelectorAll('.mission_patient').length).demands.filter(d => d.chance >= settings.minChance);
+        // Was schon unterwegs oder vor Ort ist, fehlt nicht; angehakte Fahrzeuge stehen noch in der Liste der freien
+        applyPresent(demands, { driving: present.driving, atScene: present.atScene, selected: [] }, 'all');
+        demands.forEach(d => {
+            if (d.need <= 0 || !d.demand.types.length) return;
+            const available = free.filter(type => d.demand.types.includes(type)).length;
+            if (available < d.need) stats.counts[d.demand.label] = (stats.counts[d.demand.label] || 0) + 1;
         });
+        stats.seen = stats.seen.concat(id).slice(-1000);
+        try {
+            localStorage.setItem(SHORTAGE_KEY, JSON.stringify(stats));
+        } catch (e) {
+            log('Statistik konnte nicht gespeichert werden', e);
+        }
+    }
 
-        // Welche Einsätze die nächste Wache bringt
-        const steps = {};
-        const newTypes = {};
-        baseMissions(missions).forEach(([, mission]) => {
-            const access = missionAccess(mission, plan.buildings);
-            if (access.capped) return;
+    /* ---------------- Werkzeug: Fuhrpark & Ausbau ---------------- */
+
+    // Kleine Tabelle; jede Zeile ist ein Array aus Text oder Knoten, optional mit Tooltip (title)
+    function dashTable(parent, headers, rows) {
+        const table = dashEl('table', 'lsshelper-dash-table');
+        const head = table.createTHead().insertRow();
+        headers.forEach(text => head.append(dashEl('th', '', text)));
+        const body = table.createTBody();
+        rows.forEach(row => {
+            const tr = body.insertRow();
+            if (row.title) tr.title = row.title;
+            row.cells.forEach(cell => {
+                const td = tr.insertCell();
+                if (cell instanceof Node) td.append(cell);
+                else td.textContent = cell;
+            });
+        });
+        parent.append(table);
+        return table;
+    }
+
+    async function renderExpansionTool(ctx) {
+        ctx.status('Lese Gebäude, Fahrzeuge und Einsatzdaten …');
+        const { buildings, vehicles } = await loadBasics();
+        const missions = await getMissions();
+        const counts = prereqCounts(buildings);
+        const ownTypes = new Set(buildings.map(b => b.building_type));
+
+        // Einsätze, die du bekommen kannst – gleichnamige Varianten zählen einzeln nach ihrem höchsten Bedarf
+        const reachable = Object.values(missions).filter(m => {
+            if (m.x) return false;
+            const access = missionAccess(m, buildings);
+            return !access.capped && access.mainMissing === null && !access.unmet.length && !access.unknown.length;
+        });
+        ctx.status(`${reachable.length} Einsatzvarianten erreichbar mit deinen Gebäuden. Hier wird nichts geändert.`);
+
+        /* Fahrzeugbedarf: Einsätze, für die dein ganzer Fuhrpark nicht reicht, plus was im Einsatzfenster wirklich gefehlt hat */
+        const stats = readShortages();
+        const rows = [];
+        const seenDemands = new Set();
+        reachable.forEach(m => Object.keys(m.r).forEach(key => {
+            const demand = demandForKey(key);
+            if (demand && demand.types.length) seenDemands.add(demand);
+        }));
+        Object.keys(stats.counts).forEach(label => {
+            const demand = DEMANDS.find(d => d.label === label);
+            if (demand) seenDemands.add(demand);
+        });
+        seenDemands.forEach(demand => {
+            const owned = vehicles.filter(v => demand.types.includes(v.vehicle_type)).length;
+            const needs = {};
+            reachable.forEach(m => demand.keys.forEach(key => {
+                const need = m.r[key];
+                if (typeof need === 'number' && need > 0 && (!m.h || !(m.h[key] < settings.minChance))) needs[m.n] = Math.max(needs[m.n] || 0, need);
+            }));
+            const list = Object.entries(needs);
+            const short = list.filter(([, need]) => need > owned);
+            const live = stats.counts[demand.label] || 0;
+            if (!short.length && !live) return;
+            const gain = extra => short.filter(([, need]) => need <= owned + extra).length;
+            // Was kaufen und wohin: erster kaufbarer Typ, Wache mit freiem Stellplatz bevorzugt
+            const buyable = demand.types.filter(type => STAFF[type] && STAFF[type][1] > 0 && (dataLabels.possible[type] || []).some(t => ownTypes.has(t)));
+            const type = buyable[0];
+            const extension = type === undefined ? null : TYPE_EXTENSIONS.find(([types]) => types.includes(type));
+            const hasExtension = b => !extension || (b.extensions || []).some(e => e.available !== false && extension[1].test(e.caption));
+            const places = type === undefined ? [] : buildings.filter(b => (dataLabels.possible[type] || []).includes(b.building_type) && hasExtension(b));
+            const free = places.filter(b => b.level + 1 > vehicles.filter(v => v.building_id === b.id && STAFF[v.vehicle_type] && STAFF[v.vehicle_type][1] > 0).length);
+            const where = extension && !places.length ? `braucht Erweiterung „${extension[2]}“` : !places.length ? '' : free.length ? `frei: ${free.slice(0, 2).map(b => b.caption).join(', ')}` : 'alle passenden Wachen voll';
+            const einsaetze = n => `${n} ${n === 1 ? 'Einsatz' : 'Einsätze'}`;
+            rows.push({
+                score: live * 5 + short.length,
+                title: short.length ? `Fehlt bei: ${short.map(([name, need]) => `${name} (${need})`).join(', ')}` : '',
+                cells: [
+                    demand.label,
+                    String(owned),
+                    short.length ? `${short.length} (bis ${Math.max(...short.map(([, need]) => need))} nötig)` : '–',
+                    live ? `${live}×` : '–',
+                    type === undefined ? '–' : `+1 ${dataLabels.vehicles[type] || demand.label}: ${einsaetze(gain(1))}${short.length > gain(1) ? `, +2: ${gain(2)}` : ''}`,
+                    where,
+                ],
+            });
+        });
+        rows.sort((a, b) => b.score - a.score);
+        const need = dashCard(ctx.body, 'Fahrzeugbedarf', rows.length || '✓', rows.length ? '' : 'lsshelper-dash-count-ok');
+        need.append(
+            dashEl(
+                'div',
+                'lsshelper-dash-empty',
+                `„Einsätze“: erreichbare Einsätze, die mehr verlangen, als du insgesamt besitzt. „Zu wenig frei“: so oft war das Fahrzeug beim Öffnen eines Einsatzes nicht in ausreichender Zahl verfügbar (${stats.seen.length} Einsätze seit ${new Date(stats.since).toLocaleDateString('de-DE')}). Maus über eine Zeile zeigt die Einsätze.`
+            )
+        );
+        if (rows.length) dashTable(need, ['Fahrzeug', 'Bestand', 'Einsätze', 'Zu wenig frei', 'Vorschlag', 'Stellplatz'], rows.slice(0, 15));
+        else need.append(dashEl('div', 'lsshelper-dash-empty', 'Dein Fuhrpark deckt alle erreichbaren Einsätze ab.'));
+        need.head.append(
+            dashButton('Statistik zurücksetzen', 'lsshelper-btn-quiet', () => {
+                localStorage.removeItem(SHORTAGE_KEY);
+                ctx.open('expansion');
+            })
+        );
+
+        /* Freischaltungen: was die nächste Wache oder Erweiterung bringt */
+        const gains = {};
+        const add = (id, label, have, step, name) => {
+            gains[id] = gains[id] || { label, have, steps: {} };
+            (gains[id].steps[step] = gains[id].steps[step] || new Set()).add(name);
+        };
+        Object.values(missions).forEach(m => {
+            if (m.x) return;
+            const access = missionAccess(m, buildings);
+            if (access.capped || access.unknown.length) return;
             if (access.mainMissing !== null) {
-                if (!access.unmet.length) (newTypes[access.mainMissing] = newTypes[access.mainMissing] || []).push(mission.n);
+                if (!access.unmet.length) add(`b${access.mainMissing}`, `${buildingName(access.mainMissing)} (neues Gebäude)`, 0, 1, m.n);
                 return;
             }
             if (access.unmet.length !== 1) return;
             const { key, value, have } = access.unmet[0];
-            steps[key] = steps[key] || { have, levels: {} };
-            (steps[key].levels[value] = steps[key].levels[value] || []).push(mission.n + (access.unknown.length ? '*' : ''));
+            if (value - have <= 2) add(key, prereqName(key), have, value - have, m.n);
         });
-        // Gleichnamige Einsätze (verschiedene Orte oder Ausprägungen) zählen einmal
-        const unique = list => Array.from(new Set(list));
-        const names = list => `${list.slice(0, 6).join(', ')}${list.length > 6 ? ` … (+${list.length - 6})` : ''}`;
-        const amount = list => `${list.length} ${list.length === 1 ? 'Einsatz' : 'Einsätze'}`;
-        const unlock = dashCard(ctx.body, 'Nächste Freischaltungen');
-        Object.entries(steps).forEach(([key, { have, levels }]) => {
-            unlock.append(dashEl('div', 'lsshelper-dash-station', `${COUNT_KEYS[key].label}: du hast ${have}`));
-            Object.keys(levels).map(Number).sort((a, b) => a - b).slice(0, 4).forEach(level => {
-                const list = unique(levels[level]);
-                unlock.append(dashEl('div', 'lsshelper-dash-note', `ab ${level} (+${level - have}): ${amount(list)} – ${names(list)}`));
-            });
-        });
-        const missingTypes = Object.entries(newTypes).sort((a, b) => b[1].length - a[1].length);
-        if (missingTypes.length) unlock.append(dashEl('div', 'lsshelper-dash-station', 'Neue Gebäudearten'));
-        missingTypes.forEach(([type, all]) => {
-            const list = unique(all);
-            unlock.append(dashEl('div', 'lsshelper-dash-note', `${BUILDING_NAMES[type] || `Gebäudetyp ${type}`}: ${amount(list)} – ${names(list)}`));
-        });
-        // Erweiterungen: Einsätze (auch Varianten), denen von den Wachen her nichts fehlt, die aber einen Ausbau voraussetzen.
-        // Ob der Ausbau schon steht, lässt sich hier nicht prüfen – deshalb als Übersicht, nicht als Mangel.
-        const byExtension = {};
-        Object.values(missions).filter(m => !m.x).forEach(mission => {
-            const access = missionAccess(mission, plan.buildings);
-            if (access.capped || access.mainMissing !== null || access.unmet.length) return;
-            access.unknown.forEach(key => (byExtension[key] = byExtension[key] || new Set()).add(mission.n));
-        });
-        const extensions = Object.entries(byExtension).sort((a, b) => b[1].size - a[1].size);
-        if (extensions.length) unlock.append(dashEl('div', 'lsshelper-dash-station', 'Erweiterungen (falls noch nicht gebaut)'));
-        extensions.slice(0, 15).forEach(([key, set]) => {
-            const list = Array.from(set);
-            unlock.append(dashEl('div', 'lsshelper-dash-note', `${dataLabels.pre[key] || key.replace(/_/g, ' ')}: ${amount(list)} – ${names(list)}`));
-        });
-        if (!Object.keys(steps).length && !missingTypes.length) unlock.append(dashEl('div', 'lsshelper-dash-empty', 'Keine weiteren Freischaltungen über die Anzahl der Wachen gefunden.'));
-        unlock.append(dashEl('div', 'lsshelper-dash-empty', '* braucht zusätzlich eine Erweiterung, die sich aus den Gebäudedaten nicht sicher ablesen lässt. Einsätze, die nur an Erweiterungen hängen, fehlen in dieser Liste.'));
+        const unlockRows = Object.values(gains)
+            .map(g => {
+                const one = g.steps[1] || new Set();
+                const two = new Set([...one, ...(g.steps[2] || [])]);
+                return { one, two, g };
+            })
+            .filter(r => r.two.size)
+            .sort((a, b) => b.one.size - a.one.size || b.two.size - a.two.size)
+            .slice(0, 15)
+            .map(({ one, two, g }) => ({
+                title: `+1: ${Array.from(one).join(', ') || '–'}`,
+                cells: [g.label, String(g.have), one.size ? `${one.size}` : '–', two.size > one.size ? `${two.size}` : '–'],
+            }));
+        const unlock = dashCard(ctx.body, 'Freischaltungen', unlockRows.length || '✓', unlockRows.length ? '' : 'lsshelper-dash-count-ok');
+        unlock.append(dashEl('div', 'lsshelper-dash-empty', 'Neue Einsatzarten durch eine weitere Wache oder Erweiterung. Maus über eine Zeile zeigt die Einsätze.'));
+        if (unlockRows.length) dashTable(unlock, ['Gebäude / Erweiterung', 'Du hast', '+1 bringt', '+2 bringt'], unlockRows);
+        else unlock.append(dashEl('div', 'lsshelper-dash-empty', 'Keine Freischaltungen über eine oder zwei weitere Wachen oder Erweiterungen gefunden.'));
+
+        /* Wo noch Personal und Platz für weitere Fahrzeuge ist */
+        const room = buildings
+            .filter(b => STATION_TYPES.includes(b.building_type))
+            .map(b => {
+                const own = vehicles.filter(v => v.building_id === b.id);
+                const seats = own.reduce((sum, v) => sum + (STAFF[v.vehicle_type] ? STAFF[v.vehicle_type][1] : 0), 0);
+                const slots = b.level + 1;
+                const used = own.filter(v => STAFF[v.vehicle_type] && STAFF[v.vehicle_type][1] > 0).length;
+                return { b, spare: b.personal_count - seats, slots, used };
+            })
+            .filter(r => r.spare > 0)
+            .sort((a, b) => b.spare - a.spare);
+        const roomCard = dashCard(ctx.body, 'Platz für neue Fahrzeuge');
+        if (room.length) {
+            dashTable(
+                roomCard,
+                ['Wache', 'Personal ohne Sitzplatz', 'Stellplätze'],
+                room.map(r => ({ cells: [stationHeading(ctx, r.b).firstChild, String(r.spare), `${r.used}/${r.slots}${r.used >= r.slots ? ' – Ausbaustufe nötig' : ''}`] }))
+            );
+        } else roomCard.append(dashEl('div', 'lsshelper-dash-empty', 'Auf keiner Wache steht Personal ohne Sitzplatz.'));
     }
+
+    // Fahrzeugtypen, die nur mit einer bestimmten Erweiterung gekauft werden können: [Typen, Erweiterung (Name laut Spiel), Anzeigename]
+    const TYPE_EXTENSIONS = [
+        [[75, 76], /Flughafenfeuerwehr/, 'Flughafenfeuerwehr'],
+        [[83, 84, 85, 86], /Werkfeuerwehr/, 'Werkfeuerwehr'],
+        [[110, 111, 175, 179], /Netzersatzanlage 50/, 'Netzersatzanlage 50'],
+        [[112, 113, 180], /Netzersatzanlage 200/, 'Netzersatzanlage 200'],
+        [[114, 115, 116], /Großlüfter/, 'Großlüfter'],
+        [[126, 128, 129], /Drohne/, 'Drohneneinheit'],
+        [[162, 163, 164], /Bahnrettung/, 'Bahnrettung'],
+        [[185, 186], /Tierrettung/, 'Tierrettung'],
+        [[187, 188, 189, 190, 191, 192], /Wald- und Vegetation/, 'Wald- und Vegetationsbrandbekämpfung'],
+        [[64, 66, 67, 68, 70, 71], /Wasserrettung/, 'Wasserrettung'],
+        [[138, 139, 140, 141, 142], /Verpflegungsdienst/, 'Verpflegungsdienst'],
+    ];
+
+    // Wachen, auf denen Fahrzeuge stehen (keine Schulen, Krankenhäuser, Leitstellen)
+    const STATION_TYPES = [0, 2, 5, 6, 9, 11, 12, 13, 15, 17, 18, 19, 20, 21, 24, 25, 26, 28, 29];
 
     /* ---------------- Werkzeug: AAO ---------------- */
 
@@ -1972,7 +2217,9 @@
 
     async function renderAaoTool(ctx) {
         ctx.status('Lese AAOs und Einsatzdaten …');
-        const [aaos, missions, buildings] = await Promise.all([loadAaos(), getMissions(), fetchJson('/api/buildings')]);
+        const aaos = await loadAaos();
+        const missions = await getMissions();
+        const { buildings } = await loadBasics();
         saveCategoryStylesFromApi(aaos);
         ctx.status(`${aaos.length} AAOs gelesen. Hier wird nichts geändert – „anlegen“ und „bearbeiten“ öffnen das Formular des Spiels.`);
         await sleep(0);
@@ -2107,7 +2354,7 @@
 
     const DASH_TOOLS = [
         { id: 'stations', title: 'Wachen', render: renderStationsTool },
-        { id: 'expansion', title: 'Ausbau', render: renderExpansionTool },
+        { id: 'expansion', title: 'Fuhrpark & Ausbau', render: renderExpansionTool },
         { id: 'aao', title: 'AAO', render: renderAaoTool },
         { id: 'settings', title: 'Einstellungen', render: renderSettingsTool },
     ];

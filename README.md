@@ -37,6 +37,33 @@ Profilmenü → **LSS Helper** → Reiter **Einstellungen** → Abschnitt
 **Speichern**. Am PC mit LSS-Manager den Hauptschalter ausgeschaltet lassen,
 damit nichts doppelt angezeigt wird.
 
+### Was die Manager-Funktionen können
+
+Jeder Punkt hat in den Einstellungen einen eigenen Schalter.
+
+- **Touch / iPad:** Knöpfe „AAO wählen“ und „Alarm & weiter“ im Einsatzfenster,
+  größere Bedienelemente.
+- **Einsatzliste:** Ø Credits, Restdauer, Patienten/Gefangene, Behandlungs- und
+  Abpumpzeiten, Stern (bleibt oben), einklappen, sortieren (auch für Vor/Zurück im
+  Einsatzfenster), teilen, Saison-Symbole.
+- **Einsatzfenster:** Ø Credits, Generierungszeit (gelb/rot bei alten bzw.
+  verfallenden Einsätzen), Patienten-Zusammenfassung und Einklappen,
+  Fahrzeug-/Spielerzähler, feste Kopfleiste, Karte zentrieren, Fahrzeugtyp,
+  längste Anfahrtszeit, Auswahl zurücksetzen, Zähler im Bereitstellungsraum.
+- **Geld:** Credits-Menü (Coins, Rang, Topliste, Verbandskasse, Ziele),
+  Tageszusammenfassung nach Kategorien mit Filter und CSV-Export, Dashboard-Reiter
+  „Geld“ mit dem Verlauf der letzten Tage.
+- **Redesign & Sprechwünsche:** modernere Optik der Spielseiten, automatisch zum
+  nächsten Sprechwunsch, Knopf „bestes Krankenhaus“ / „beste Zelle“ mit Filtern,
+  Einsätze auf der Fahrzeugseite nach Credits, Suche/Sortierung/alle Seiten laden
+  in Listen, Aufgaben-Seite, Gebäudeliste im Profil.
+- **Gebäude & Personal:** Fahrzeugtyp und Besatzung in der Wache, Status 2 ↔ 6
+  per Antippen, Personalbedarf, Ausbauten oben, Leitstelle direkt wählen,
+  Sicherheitsabfrage beim Kleinwachen-Ausbau, Ausbildungsübersicht,
+  „nur passendes Personal“ bei der Zuweisung.
+- **Dashboard-Reiter „Übersicht“:** Fahrzeuge nach Status, Gebäude nach Typ mit
+  Ausbauten, Streifen starten.
+
 ## Neue Version veröffentlichen
 
 `@version` im Skriptkopf erhöhen und auf `main` pushen (oder einen Tag `vX.Y.Z`

@@ -95,6 +95,17 @@
         rdTables: true,
         rdTasks: true,
         rdProfile: true,
+        ebVehicleList: true,
+        ebFmsSwitch: true,
+        ebPersonnelDemand: true,
+        ebNavCount: true,
+        ebExpansions: true,
+        ebUpgradeConfirm: true,
+        ebDispatch: true,
+        ebSchoolingSummary: true,
+        ebFittingStaff: true,
+        ebBuildingFilter: true,
+        dbOverview: true,
         mlEventList: '🇪🇺: 704, 705, 706, 707, 708; ❄️: 53, 428, 581, 665, 677, 787, 788, 789, 793, 794, 795, 831, 861, 861/a, 861/b, 861/ab, 862, 862/a; 🌞: 183, 184, 185, 461, 546, 546/a, 547, 548, 646, 647, 648, 754, 863, 863/a; 🌹: 360, 361, 362, 363, 364, 365, 597, 598, 599, 600, 601, 602, 603, 604, 605, 790, 791, 792, 833, 834, 917, 918, 919, 920; 🌼: 722, 723, 724, 725, 726, 727, 728, 729, 730, 965; 🍂: 672, 673, 674, 675, 676, 677, 678, 679, 680; 🍺: 88, 216, 217, 218, 219, 220, 452, 453, 454, 456, 457, 626, 627, 628, 629, 629/a, 630, 844, 845, 846; 🎃: 111, 112, 113, 114, 115, 116, 116/a, 117, 118, 118/a, 119, 943, 944, 945, 946; 🎅: 52, 54, 55, 56, 129, 130, 202, 203, 582, 583, 583/a, 584, 584/a, 584/b, 584/ab, 585, 585/a, 585/b, 585/ab, 586, 587, 588, 589, 590, 783, 784, 785, 786, 901, 911, 912, 913; 🎈: 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772; 🏅: 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878; 💐: 360, 742, 743, 744, 745, 746, 747, 748, 847, 847/a; 🥅: 371, 372, 373, 374, 375, 376, 641, 642, 849, 850, 850/a, 851, 852; 🥚: 284, 285, 286, 286/a, 286/b, 286/ab, 287, 288, 289, 290, 291, 291/a, 442, 443, 444, 445, 446, 618, 618/a, 618/b, 618/ab, 732, 733, 733/a, 733/b, 733/ab, 734, 735, 735/a, 736, 737, 739, 739/a, 927, 927/a, 928, 928/a, 928/b, 928/c, 928/ab, 928/ac, 928/bc, 928/abc, 929, 929/a, 929/b, 929/ab; 🥸: 710, 711, 712, 713, 714, 715, 716, 717, 718, 719; 🧨: 259, 259-0, 260, 261, 262, 263, 264, 265, 266, 267, 268, 268/a, 269, 270, 326, 591, 695, 695/a, 695/b, 695/ab, 695-0, 695-0/a, 695-0/b, 695-0/ab, 695-1, 695-1/a, 695-1/b, 695-1/ab',
     };
     const SETTINGS_LABELS = {
@@ -167,6 +178,17 @@
         rdTables: 'Listen (Credits, Coins, Topliste, Verband, Lehrgänge …): Suche, Sortierung, alle Seiten laden',
         rdTasks: 'Aufgaben: abholbare nach oben und hervorheben, erledigte ausblendbar',
         rdProfile: 'Profil: Gebäudeliste nach Leitstelle mit Suche und Typ-Filter',
+        ebVehicleList: 'Wache: Fahrzeugliste mit Typ, Besatzung (zugewiesen/max, farbig) und Knopf zur Personalzuweisung',
+        ebFmsSwitch: 'Wache: Status 2 ↔ 6 durch Antippen des Status wechseln',
+        ebPersonnelDemand: 'Wache: Personalbedarf bei Minimal- und Maximalbesatzung',
+        ebNavCount: 'Wache: Zahl gleicher Gebäude in den Vor-/Zurück-Knöpfen',
+        ebExpansions: 'Wache: Ausbauten und ihr Stand direkt oben anzeigen',
+        ebUpgradeConfirm: 'Sicherheitsabfrage vor dem Ausbau einer Kleinwache',
+        ebDispatch: 'Wache: Leitstelle direkt auswählen',
+        ebSchoolingSummary: 'Personalliste: wie viele Personen welche Ausbildung haben',
+        ebFittingStaff: 'Personalzuweisung: Schalter „nur passend ausgebildetes Personal“',
+        ebBuildingFilter: 'Leitstelle: Gebäudeliste mit Suche und Sortierung',
+        dbOverview: 'Dashboard-Reiter „Übersicht“: Gebäude, Fahrzeuge nach Status, Ausbauten, Streifen starten',
     };
     // Aufbau der Einstellungsseite. Gruppen mit master hängen an diesem Schalter: ist er aus, wirkt keine ihrer Einstellungen.
     const SETTINGS_SECTIONS = [
@@ -184,6 +206,8 @@
                 },
                 { title: 'Geld', keys: ['cxMenu', 'cxCreditsInNav', 'cxToplist', 'cxAllianceFunds', 'cxGoals', 'cxGoalBar', 'dcSummary', 'dcAverage', 'cxHistory', 'cxHistoryDays'] },
                 { title: 'Redesign & Sprechwünsche', keys: ['rdSkin', 'rdNextTransport', 'rdTransportCount', 'rdHospital', 'rdMaxTax', 'rdPreferOwn', 'rdPrison', 'rdAutoOpenTransport', 'rdVehicleMissions', 'rdTables', 'rdTasks', 'rdProfile'] },
+                { title: 'Gebäude & Personal', keys: ['ebVehicleList', 'ebFmsSwitch', 'ebPersonnelDemand', 'ebNavCount', 'ebExpansions', 'ebUpgradeConfirm', 'ebDispatch', 'ebSchoolingSummary', 'ebFittingStaff', 'ebBuildingFilter'] },
+                { title: 'Dashboard', keys: ['dbOverview'] },
                 { title: 'Einsatzliste', keys: ['mlCredits', 'mlRemaining', 'mlRemainingGreen', 'mlPatients', 'mlHideZero', 'mlPatientTime', 'mlPumpTime', 'mlStar', 'mlCollapse', 'mlSort', 'mlSortWindow', 'mlShare', 'mlShareMin', 'mlEvents', 'mlEventList'] },
             ],
         },
@@ -752,6 +776,10 @@
             #lsshelper-dash label.lsshelper-dash-master { font-weight: 700; }
             .lsshelper-dash-groups { margin-left: 22px; }
             .lsshelper-dash-off { opacity: 0.45; }
+            .lsshelper-dash-kpis { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 4px 0; }
+            .lsshelper-dash-kpi small { display: block; color: var(--muted); font-size: 11px; }
+            .lsshelper-dash-kpi b { font-size: 20px; color: var(--text); }
+            .lsshelper-dash-tabs { flex-wrap: wrap; }
             #lsshelper-dash label.lsshelper-dash-row:has(textarea) { flex-direction: column-reverse; align-items: stretch; }
             #lsshelper-dash textarea.lsshelper-dash-text { width: 100%; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
@@ -2559,6 +2587,7 @@
         { id: 'stations', title: 'Wachen', render: renderStationsTool },
         { id: 'expansion', title: 'Fuhrpark & Ausbau', render: renderExpansionTool },
         { id: 'aao', title: 'AAO', render: renderAaoTool },
+        { id: 'overview', title: 'Übersicht', render: (...args) => renderOverviewTool(...args), when: () => managerOn('dbOverview') },
         { id: 'money', title: 'Geld', render: (...args) => renderMoneyTool(...args), when: () => managerOn('cxHistory') },
         { id: 'settings', title: 'Einstellungen', render: renderSettingsTool },
     ];
@@ -2763,6 +2792,13 @@
             .task_panel.lsshelper-rd-claim { box-shadow: 0 0 0 3px #2e7d32; }
             .lsshelper-rd-tasks { margin: 6px 0; }
             .lsshelper-rd-profile select { max-width: 280px; margin-bottom: 6px; }
+            .lsshelper-eb-low { color: #c62828; font-weight: 700; }
+            .lsshelper-eb-full { color: #2e7d32; font-weight: 700; }
+            .lsshelper-eb-fms { cursor: pointer; }
+            .lsshelper-eb-dispatch { display: inline-block; width: auto; max-width: 340px; margin: 6px 0; }
+            .lsshelper-eb-saved { border-color: #2e7d32; box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.4); }
+            .lsshelper-eb-expansions, .lsshelper-eb-schooling { margin: 6px 0; line-height: 2; }
+            .lsshelper-eb-fitting { display: block; margin: 6px 0; font-weight: normal; }
             .lsshelper-mgr-pill { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; white-space: nowrap; vertical-align: middle; }
         `;
         // Größere Bedienelemente nur in den Fenstern (Einsatz, Fahrzeug, Wache), die Hauptseite bleibt kompakt
@@ -4445,6 +4481,374 @@
         enhanceList(table, 1);
     }
 
+    /* ---------------- Gebäude: Wachenseite, Personal, Leitstelle ---------------- */
+
+    // Kleinwachen zählen zum selben Typ wie die großen Wachen
+    const SMALL_BUILDINGS = [[0, 18], [2, 20], [6, 19]];
+    const buildingIdFromPath = () => (location.pathname.match(/^\/buildings\/(\d+)/) || [])[1];
+
+    async function buildingPage() {
+        const id = buildingIdFromPath();
+        if (!settings.manager || !id) return;
+        addManagerStyles();
+        const table = document.getElementById('vehicle_table');
+        const info = document.querySelector('dl.dl-horizontal');
+        let vehicles = null;
+        const atBuilding = () => (vehicles = vehicles || fetchJson(`/api/buildings/${id}/vehicles`).catch(() => []));
+
+        if (table && (managerOn('ebVehicleList') || managerOn('ebFmsSwitch'))) {
+            const list = await atBuilding();
+            const byId = Object.fromEntries(list.map(v => [String(v.id), v]));
+            const head = table.querySelector('thead tr');
+            if (managerOn('ebVehicleList') && head && head.lastElementChild) head.lastElementChild.textContent = '(zugewiesen / max)';
+            table.querySelectorAll('tbody tr').forEach(row => {
+                const link = row.querySelector('a[href^="/vehicles/"]:not([href$="/edit"])');
+                const vehicleId = link && (link.getAttribute('href').match(/\/vehicles\/(\d+)/) || [])[1];
+                const vehicle = vehicleId && byId[vehicleId];
+                if (!vehicle) return;
+                if (managerOn('ebVehicleList')) {
+                    const type = document.createElement('small');
+                    type.className = 'lsshelper-eb-type';
+                    type.textContent = ` ${vehicle.vehicle_type_caption || dataLabels.vehicles[vehicle.vehicle_type] || ''}`;
+                    link.after(type);
+                    const max = vehicle.max_personnel_override === null || vehicle.max_personnel_override === undefined ? (STAFF[vehicle.vehicle_type] || [0, 0])[1] : vehicle.max_personnel_override;
+                    const assigned = vehicle.assigned_personnel_count || 0;
+                    const cell = row.lastElementChild;
+                    if (cell && max > 0) {
+                        cell.textContent = '';
+                        const value = document.createElement('span');
+                        value.className = assigned < max ? 'lsshelper-eb-low' : 'lsshelper-eb-full';
+                        value.textContent = `${assigned} / ${max}`;
+                        cell.append(value);
+                    }
+                    const edit = row.querySelector('a[href$="/edit"]');
+                    if (edit && !row.querySelector('.lsshelper-eb-assign')) {
+                        const assign = document.createElement('a');
+                        assign.className = 'btn btn-default btn-xs lsshelper-eb-assign';
+                        assign.href = `/vehicles/${vehicleId}/zuweisung`;
+                        assign.title = 'Personal zuweisen';
+                        assign.textContent = '👥';
+                        edit.after(assign);
+                    }
+                }
+                // Status 2 ↔ 6 per Antippen
+                const fms = row.querySelector('.building_list_fms');
+                if (managerOn('ebFmsSwitch') && fms) {
+                    fms.classList.add('lsshelper-eb-fms');
+                    fms.addEventListener('click', async e => {
+                        const current = fms.classList.contains('building_list_fms_2') ? 2 : fms.classList.contains('building_list_fms_6') ? 6 : 0;
+                        if (!current) return;
+                        e.preventDefault();
+                        const next = current === 2 ? 6 : 2;
+                        const response = await fetch(`/vehicles/${vehicleId}/set_fms/${next}`, { credentials: 'same-origin' }).catch(() => null);
+                        if (!response || !response.ok) return;
+                        fms.classList.replace(`building_list_fms_${current}`, `building_list_fms_${next}`);
+                        fms.textContent = String(next);
+                    });
+                }
+            });
+        }
+
+        // Personalbedarf: Summe der Mindest- und Höchstbesatzung, in Klammern ohne Fahrzeuge in Status 6
+        if (managerOn('ebPersonnelDemand') && info && table) {
+            const list = await atBuilding();
+            const sum = (filter, index) => list.filter(filter).reduce((total, v) => total + (index === 1 && v.max_personnel_override !== null && v.max_personnel_override !== undefined ? v.max_personnel_override : (STAFF[v.vehicle_type] || [0, 0])[index]), 0);
+            const active = v => v.fms_real !== 6;
+            const dt = document.createElement('dt');
+            dt.append(Object.assign(document.createElement('strong'), { textContent: 'Personalbedarf:' }));
+            const dd = document.createElement('dd');
+            dd.textContent = `min ${sum(() => true, 0)} / max ${sum(() => true, 1)} (ohne Status 6: ${sum(active, 0)} / ${sum(active, 1)})`;
+            info.append(dt, dd);
+        }
+
+        // Vor/Zurück: wie viele Gebäude desselben Typs in jeder Richtung noch kommen
+        const nav = document.getElementById('building-navigation-container');
+        if ((managerOn('ebNavCount') || managerOn('ebDispatch')) && nav) {
+            const { buildings } = await loadBasics().catch(() => ({ buildings: [] }));
+            const self = buildings.find(b => String(b.id) === String(id));
+            if (self && managerOn('ebNavCount') && nav.children.length >= 2) {
+                const group = SMALL_BUILDINGS.find(pair => pair.includes(self.building_type)) || [self.building_type];
+                const ids = buildings
+                    .filter(b => group.includes(b.building_type))
+                    .map(b => b.id)
+                    .sort((a, b) => a - b);
+                const position = ids.indexOf(self.id);
+                if (position >= 0) {
+                    nav.firstElementChild.textContent = `[←${position}] ${nav.firstElementChild.textContent.trim()}`;
+                    nav.lastElementChild.textContent = `${nav.lastElementChild.textContent.trim()} [${ids.length - position - 1}→]`;
+                }
+            }
+            // Leitstelle direkt wählen (nicht für Leitstellen selbst)
+            const centers = buildings.filter(b => b.building_type === 7);
+            if (self && managerOn('ebDispatch') && self.building_type !== 7 && centers.length) {
+                const select = document.createElement('select');
+                select.className = 'form-control input-sm lsshelper-eb-dispatch';
+                select.add(new Option('Keine Leitstelle', '0'));
+                centers
+                    .sort((a, b) => a.caption.localeCompare(b.caption))
+                    .forEach(center => select.add(new Option(`Leitstelle: ${center.caption}`, center.id, false, center.id === self.leitstelle_building_id)));
+                select.addEventListener('change', async () => {
+                    select.disabled = true;
+                    const response = await fetch(`/buildings/${id}/leitstelle-set/${select.value}`, { credentials: 'same-origin' }).catch(() => null);
+                    select.disabled = false;
+                    select.classList.toggle('lsshelper-eb-saved', !!response && response.ok);
+                    forgetFleet();
+                });
+                nav.after(select);
+            }
+        }
+
+        // Ausbauten oben zusammengefasst: grün fertig, blau im Bau (mit Restzeit), grau nicht gebaut
+        const expansions = Array.from(document.querySelectorAll('#ausbauten tbody tr'));
+        if (managerOn('ebExpansions') && info && expansions.length) {
+            const box = document.createElement('div');
+            box.className = 'lsshelper-eb-expansions';
+            expansions.forEach(row => {
+                const name = row.querySelector('b');
+                if (!name) return;
+                const label = document.createElement('span');
+                const end = row.querySelector('span[data-end-time]');
+                if (end) {
+                    label.className = 'label label-info';
+                    const left = (parseInt(end.dataset.endTime) - Date.now()) / 1000;
+                    label.textContent = `${name.textContent.trim()} · noch ${left > 86400 ? `${Math.ceil(left / 86400)} Tage` : formatSeconds(left)}`;
+                } else if (row.querySelector('.label-success') || row.querySelector('a[href*="extension_ready"]')) {
+                    label.className = row.querySelector('.label-danger') ? 'label label-danger' : 'label label-success';
+                    label.textContent = name.textContent.trim();
+                } else {
+                    label.className = 'label label-default';
+                    label.textContent = `${name.textContent.trim()} · nicht gebaut`;
+                }
+                box.append(label, ' ');
+            });
+            info.after(box);
+        }
+
+        // Kleinwache ausbauen kostet viel – erst nachfragen
+        const upgrade = document.querySelector('.alert a[href$="/small_expand"]');
+        if (managerOn('ebUpgradeConfirm') && upgrade) {
+            upgrade.addEventListener(
+                'click',
+                e => {
+                    if (confirm('Diese Kleinwache wirklich zur normalen Wache ausbauen? Das kostet Credits und lässt sich nicht rückgängig machen.')) return;
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                },
+                true
+            );
+        }
+
+        // Leitstelle: Gebäudeliste durchsuchbar und sortierbar
+        const buildingTable = document.getElementById('building_table');
+        if (managerOn('ebBuildingFilter') && buildingTable) enhanceList(buildingTable, 1);
+    }
+
+    // Personalliste einer Wache: Anzahl je Ausbildung
+    function schoolingSummary() {
+        const rows = Array.from(document.querySelectorAll('#personal_table tbody tr'));
+        if (!managerOn('ebSchoolingSummary') || !rows.length) return;
+        addManagerStyles();
+        const counts = {};
+        let untrained = 0;
+        rows.forEach(row => {
+            let keys = [];
+            try {
+                keys = JSON.parse(row.getAttribute('data-filterable-by') || '[]');
+            } catch (e) {
+                /* ohne Lehrgänge */
+            }
+            if (!keys.length) untrained++;
+            keys.forEach(key => (counts[key] = (counts[key] || 0) + 1));
+        });
+        const box = document.createElement('div');
+        box.className = 'lsshelper-eb-schooling';
+        box.append(Object.assign(document.createElement('b'), { textContent: `${rows.length} Personen · ` }));
+        Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .forEach(([key, count]) => box.append(Object.assign(document.createElement('span'), { className: 'label label-info', textContent: `${TRAINING_NAMES[key] || key}: ${count}` }), ' '));
+        box.append(Object.assign(document.createElement('span'), { className: 'label label-default', textContent: `ohne Lehrgang: ${untrained}` }));
+        document.getElementById('personal_table').before(box);
+    }
+
+    // Personalzuweisung: nur Personal mit den Lehrgängen zeigen, die das Fahrzeug braucht
+    async function fittingStaff() {
+        const vehicleId = (location.pathname.match(/^\/vehicles\/(\d+)\/zuweisung/) || [])[1];
+        const table = document.getElementById('personal_table');
+        if (!managerOn('ebFittingStaff') || !vehicleId || !table) return;
+        const vehicle = await fetchJson(`/api/vehicles/${vehicleId}`).catch(() => null);
+        const needed = vehicle && TRAINING[vehicle.vehicle_type] ? Object.keys(TRAINING[vehicle.vehicle_type]) : [];
+        if (!needed.length) return;
+        const label = document.createElement('label');
+        label.className = 'lsshelper-eb-fitting';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = readJson('lsshelper_eb_fitting', true);
+        const apply = () => {
+            writeJson('lsshelper_eb_fitting', box.checked);
+            table.querySelectorAll('tbody tr').forEach(row => {
+                let keys = [];
+                try {
+                    keys = JSON.parse(row.getAttribute('data-filterable-by') || '[]');
+                } catch (e) {
+                    /* ohne Lehrgänge */
+                }
+                // Bereits zugewiesene Personen bleiben sichtbar, damit man sie abwählen kann
+                const assigned = !!row.querySelector('input[type="checkbox"]:checked');
+                row.style.display = !box.checked || assigned || needed.some(key => keys.includes(key)) ? '' : 'none';
+            });
+        };
+        box.addEventListener('change', apply);
+        label.append(box, ` nur Personal mit ${needed.map(key => TRAINING_NAMES[key] || key).join(' oder ')}`);
+        (document.querySelector('.vehicles-education-filter-box') || table).before(label);
+        apply();
+    }
+
+    /* ---------------- Dashboard: Übersicht über Gebäude und Fahrzeuge ---------------- */
+
+    const FMS_LABELS = { 1: 'S1 frei Wache…', 2: 'S2 frei', 3: 'S3 Anfahrt', 4: 'S4 vor Ort', 5: 'S5 Sprechwunsch', 6: 'S6 außer Dienst', 7: 'S7 Transport', 8: 'S8 am Ziel', 9: 'S9' };
+
+    async function renderOverviewTool(ctx) {
+        ctx.status('Lese Gebäude und Fahrzeuge …');
+        const { buildings, vehicles } = await loadBasics();
+        ctx.status(`${buildings.length} Gebäude, ${vehicles.length} Fahrzeuge.`);
+        // Spielfenster öffnen: Dashboard schließen, damit das Fenster des Spiels sichtbar ist
+        const openInGame = (text, href) => {
+            const link = dashEl('a', 'lsshelper-dash-link', text);
+            link.href = href;
+            link.addEventListener('click', e => {
+                if (typeof window.lightboxOpen !== 'function') return;
+                e.preventDefault();
+                ctx.close();
+                window.lightboxOpen(href);
+            });
+            return link;
+        };
+        const count = filter => vehicles.filter(filter).length;
+        const kpis = dashCard(ctx.body, 'Auf einen Blick');
+        const row = dashEl('div', 'lsshelper-dash-kpis');
+        [
+            ['Gebäude', buildings.length],
+            ['Fahrzeuge', vehicles.length],
+            ['Personal', buildings.reduce((sum, b) => sum + (b.personal_count || 0), 0)],
+            ['Frei (S1/S2)', count(v => v.fms_real === 1 || v.fms_real === 2)],
+            ['Im Einsatz (S3/S4/S7/S8)', count(v => [3, 4, 7, 8].includes(v.fms_real))],
+            ['Sprechwunsch (S5)', count(v => v.fms_real === 5)],
+            ['Außer Dienst (S6)', count(v => v.fms_real === 6)],
+        ].forEach(([label, value]) => {
+            const kpi = dashEl('div', 'lsshelper-dash-kpi');
+            kpi.append(dashEl('small', '', label), dashEl('b', '', formatNumber(value)));
+            row.append(kpi);
+        });
+        kpis.append(row);
+
+        // Streifenfahrten (Polizei) für alle geeigneten Fahrzeuge starten
+        const patrols = dashEl('div', 'lsshelper-dash-note');
+        patrols.append('Streifen starten: ');
+        [[3600, '1 Std.'], [10800, '3 Std.'], [21600, '6 Std.']].forEach(([seconds, label]) =>
+            patrols.append(
+                dashButton(label, '', async btn => {
+                    btn.classList.add('lsshelper-btn-busy');
+                    try {
+                        const doc = await fetchDoc(`/vehiclepatrols/start/${seconds}?duration=${seconds}`);
+                        const alert = doc.querySelector('.alert');
+                        ctx.status(alert ? alert.textContent.trim() : 'Streifen gestartet.');
+                    } catch (e) {
+                        ctx.status(`Streifen konnten nicht gestartet werden: ${e.message}`);
+                    }
+                    btn.classList.remove('lsshelper-btn-busy');
+                }),
+                ' '
+            )
+        );
+        kpis.append(patrols);
+
+        // Status je Fahrzeugtyp; Antippen einer Zahl listet die Fahrzeuge
+        const states = Array.from(new Set(vehicles.map(v => v.fms_real))).filter(s => s !== undefined && s !== null).sort((a, b) => a - b);
+        const byType = {};
+        vehicles.forEach(v => {
+            const t = (byType[v.vehicle_type] = byType[v.vehicle_type] || { total: [], states: {} });
+            t.total.push(v);
+            (t.states[v.fms_real] = t.states[v.fms_real] || []).push(v);
+        });
+        const typeName = type => dataLabels.vehicles[type] || `Typ ${type}`;
+        const statusCard = dashCard(ctx.body, 'Fahrzeuge nach Status');
+        const search = dashEl('input', 'lsshelper-dash-search');
+        search.placeholder = 'Fahrzeugtyp suchen …';
+        statusCard.head.append(search);
+        const detail = dashEl('div');
+        const showVehicles = (title, list) => {
+            detail.textContent = '';
+            detail.append(dashEl('div', 'lsshelper-dash-station', `${title} (${list.length})`));
+            const buildingById = Object.fromEntries(buildings.map(b => [b.id, b]));
+            dashTable(
+                detail,
+                ['Fahrzeug', 'Status', 'Wache'],
+                list
+                    .slice()
+                    .sort((a, b) => a.caption.localeCompare(b.caption))
+                    .map(v => ({ cells: [openInGame(v.caption, `/vehicles/${v.id}`), String(v.fms_real), buildingById[v.building_id] ? buildingById[v.building_id].caption : '–'] }))
+            );
+            detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+        const cellLink = (n, title, list) => (n ? dashButton(String(n), 'lsshelper-btn-quiet', () => showVehicles(title, list)) : '–');
+        const statusTable = dashTable(
+            statusCard,
+            ['Typ', 'Gesamt', ...states.map(s => `S${s}`)],
+            Object.entries(byType)
+                .sort((a, b) => typeName(a[0]).localeCompare(typeName(b[0])))
+                .map(([type, data]) => ({
+                    title: typeName(type),
+                    cells: [typeName(type), cellLink(data.total.length, typeName(type), data.total), ...states.map(s => cellLink((data.states[s] || []).length, `${typeName(type)} in Status ${s}`, data.states[s] || []))],
+                }))
+        );
+        // Summenzeile: alle Fahrzeuge je Status
+        const totals = statusTable.tBodies[0].insertRow();
+        [dashEl('b', '', 'Alle'), cellLink(vehicles.length, 'Alle Fahrzeuge', vehicles), ...states.map(s => cellLink(count(v => v.fms_real === s), FMS_LABELS[s] || `Status ${s}`, vehicles.filter(v => v.fms_real === s)))].forEach(content => {
+            const cell = totals.insertCell();
+            if (content instanceof Node) cell.append(content);
+            else cell.textContent = content;
+        });
+        search.addEventListener('input', () => {
+            const query = search.value.toLowerCase();
+            Array.from(statusTable.tBodies[0].rows).forEach(r => (r.style.display = r === totals || !query || (r.title || '').toLowerCase().includes(query) ? '' : 'none'));
+        });
+        statusCard.append(detail);
+
+        // Gebäude je Typ mit Ausbauten
+        const buildingCard = dashCard(ctx.body, 'Gebäude nach Typ');
+        const buildingDetail = dashEl('div');
+        const types = {};
+        buildings.forEach(b => (types[b.building_type] = types[b.building_type] || []).push(b));
+        dashTable(
+            buildingCard,
+            ['Typ', 'Anzahl', 'Ausbauten (fertig)'],
+            Object.entries(types)
+                .sort((a, b) => b[1].length - a[1].length)
+                .map(([type, list]) => {
+                    const extensions = {};
+                    list.forEach(b => (b.extensions || []).forEach(ext => ext.enabled !== false && ext.available !== false && (extensions[ext.caption] = (extensions[ext.caption] || 0) + 1)));
+                    const text = Object.entries(extensions)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([caption, n]) => `${caption}: ${n}`)
+                        .join(', ');
+                    const listButton = dashButton(String(list.length), 'lsshelper-btn-quiet', () => {
+                        buildingDetail.textContent = '';
+                        buildingDetail.append(dashEl('div', 'lsshelper-dash-station', `${buildingName(type)} (${list.length})`));
+                        dashTable(
+                            buildingDetail,
+                            ['Gebäude', 'Personal', 'Ausbauten'],
+                            list
+                                .slice()
+                                .sort((a, b) => a.caption.localeCompare(b.caption))
+                                .map(b => ({ cells: [openInGame(b.caption, `/buildings/${b.id}`), String(b.personal_count || 0), (b.extensions || []).filter(e => e.available !== false).map(e => e.caption).join(', ') || '–'] }))
+                        );
+                    });
+                    return { cells: [buildingName(type), listButton, text || '–'] };
+                })
+        );
+        buildingCard.append(buildingDetail);
+    }
+
     /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
@@ -4475,6 +4879,9 @@
         { name: 'redesignLists', match: /^\/(credits|coins\/list|toplist|alliances|verband\/|alliance_logfiles|schoolings|freunde|einsaetze\/?$|profile\/\d+|buildings\/\d+\/personals)/, run: redesignLists },
         { name: 'redesignTasks', match: /^\/tasks/, run: redesignTasks },
         { name: 'profileBuildings', match: /^\/profile\/\d+\/?$/, run: profileBuildings },
+        { name: 'buildingPage', match: /^\/buildings\/\d+\/?$/, run: buildingPage },
+        { name: 'schoolingSummary', match: /^\/buildings\/\d+\/personals/, run: schoolingSummary },
+        { name: 'fittingStaff', match: /^\/vehicles\/\d+\/zuweisung/, run: fittingStaff },
         { name: 'missionWindowOrder', match: /^\/missions\/\d+/, run: missionWindowOrder },
     ];
 

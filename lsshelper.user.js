@@ -73,6 +73,16 @@
         mwAlarmTime: true,
         mwReset: true,
         mwStagingCounter: true,
+        cxMenu: true,
+        cxCreditsInNav: true,
+        cxToplist: true,
+        cxAllianceFunds: true,
+        cxGoals: '',
+        cxGoalBar: false,
+        dcSummary: true,
+        dcAverage: true,
+        cxHistory: true,
+        cxHistoryDays: 7,
         mlEventList: '🇪🇺: 704, 705, 706, 707, 708; ❄️: 53, 428, 581, 665, 677, 787, 788, 789, 793, 794, 795, 831, 861, 861/a, 861/b, 861/ab, 862, 862/a; 🌞: 183, 184, 185, 461, 546, 546/a, 547, 548, 646, 647, 648, 754, 863, 863/a; 🌹: 360, 361, 362, 363, 364, 365, 597, 598, 599, 600, 601, 602, 603, 604, 605, 790, 791, 792, 833, 834, 917, 918, 919, 920; 🌼: 722, 723, 724, 725, 726, 727, 728, 729, 730, 965; 🍂: 672, 673, 674, 675, 676, 677, 678, 679, 680; 🍺: 88, 216, 217, 218, 219, 220, 452, 453, 454, 456, 457, 626, 627, 628, 629, 629/a, 630, 844, 845, 846; 🎃: 111, 112, 113, 114, 115, 116, 116/a, 117, 118, 118/a, 119, 943, 944, 945, 946; 🎅: 52, 54, 55, 56, 129, 130, 202, 203, 582, 583, 583/a, 584, 584/a, 584/b, 584/ab, 585, 585/a, 585/b, 585/ab, 586, 587, 588, 589, 590, 783, 784, 785, 786, 901, 911, 912, 913; 🎈: 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772; 🏅: 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878; 💐: 360, 742, 743, 744, 745, 746, 747, 748, 847, 847/a; 🥅: 371, 372, 373, 374, 375, 376, 641, 642, 849, 850, 850/a, 851, 852; 🥚: 284, 285, 286, 286/a, 286/b, 286/ab, 287, 288, 289, 290, 291, 291/a, 442, 443, 444, 445, 446, 618, 618/a, 618/b, 618/ab, 732, 733, 733/a, 733/b, 733/ab, 734, 735, 735/a, 736, 737, 739, 739/a, 927, 927/a, 928, 928/a, 928/b, 928/c, 928/ab, 928/ac, 928/bc, 928/abc, 929, 929/a, 929/b, 929/ab; 🥸: 710, 711, 712, 713, 714, 715, 716, 717, 718, 719; 🧨: 259, 259-0, 260, 261, 262, 263, 264, 265, 266, 267, 268, 268/a, 269, 270, 326, 591, 695, 695/a, 695/b, 695/ab, 695-0, 695-0/a, 695-0/b, 695-0/ab, 695-1, 695-1/a, 695-1/b, 695-1/ab',
     };
     const SETTINGS_LABELS = {
@@ -123,6 +133,16 @@
         mwAlarmTime: 'Längste Anfahrtszeit der ausgewählten Fahrzeuge am Alarmieren-Knopf',
         mwReset: 'Knopf „Auswahl zurücksetzen“ (hebt alle Häkchen auf)',
         mwStagingCounter: 'Zähler der ausgewählten Fahrzeuge im Bereitstellungsraum',
+        cxMenu: 'Credits-Menü in der Kopfleiste (Credits, Coins, Rang, Topliste, Verbandskasse)',
+        cxCreditsInNav: '… Credits statt Sparschwein anzeigen',
+        cxToplist: '… Platz in der Topliste anzeigen (alle 5 Minuten aktualisiert)',
+        cxAllianceFunds: '… Verbandskasse anzeigen',
+        cxGoals: 'Credits-Ziele, z. B. „1000000, 5000000“ – beim Erreichen wird der Stand grün, bis du ihn antippst',
+        cxGoalBar: '… Fortschrittsbalken zum nächsten Ziel',
+        dcSummary: 'Tageszusammenfassung: Summen pro Kategorie, Filter und Export',
+        dcAverage: '… Durchschnitt pro Buchung anzeigen',
+        cxHistory: 'Dashboard-Reiter „Geld“: Einnahmen und Ausgaben der letzten Tage',
+        cxHistoryDays: '… so viele Tage (1–30)',
     };
     // Aufbau der Einstellungsseite. Gruppen mit master hängen an diesem Schalter: ist er aus, wirkt keine ihrer Einstellungen.
     const SETTINGS_SECTIONS = [
@@ -138,6 +158,7 @@
                     title: 'Einsatzfenster',
                     keys: ['mwCredits', 'mwGenerated', 'mwGeneratedYellow', 'mwExpireRed', 'mwPatientSummary', 'mwCollapsePatients', 'mwPatientTime', 'mwCounters', 'mwStickyHeader', 'mwLoadInHeader', 'mwHideVehicleList', 'mwCenterMap', 'mwVehicleType', 'mwAlarmTime', 'mwReset', 'mwStagingCounter'],
                 },
+                { title: 'Geld', keys: ['cxMenu', 'cxCreditsInNav', 'cxToplist', 'cxAllianceFunds', 'cxGoals', 'cxGoalBar', 'dcSummary', 'dcAverage', 'cxHistory', 'cxHistoryDays'] },
                 { title: 'Einsatzliste', keys: ['mlCredits', 'mlRemaining', 'mlRemainingGreen', 'mlPatients', 'mlHideZero', 'mlPatientTime', 'mlPumpTime', 'mlStar', 'mlCollapse', 'mlSort', 'mlSortWindow', 'mlShare', 'mlShareMin', 'mlEvents', 'mlEventList'] },
             ],
         },
@@ -717,7 +738,7 @@
             }
             .lsshelper-badge { background: #000; color: ${settings.colorVehicles}; border: 1px solid #fff; border-radius: 8px; padding: 0 5px; margin-right: 4px; font-weight: bold; }
             .lsshelper-filled { box-shadow: 0 0 0 3px #ff00d4 !important; }
-            .lsshelper-tab { box-shadow: inset 0 -4px 0 ${settings.colorName} !important; }
+            #aao-tabs .lsshelper-tab { box-shadow: inset 0 -4px 0 ${settings.colorName} !important; }
             #lsshelper-panel { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-report { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; max-height: 300px; overflow-y: auto; }
             .lsshelper-report-row { padding: 2px 0; border-top: 1px solid rgba(128, 128, 128, 0.3); }
@@ -2513,6 +2534,7 @@
         { id: 'stations', title: 'Wachen', render: renderStationsTool },
         { id: 'expansion', title: 'Fuhrpark & Ausbau', render: renderExpansionTool },
         { id: 'aao', title: 'AAO', render: renderAaoTool },
+        { id: 'money', title: 'Geld', render: (...args) => renderMoneyTool(...args), when: () => managerOn('cxHistory') },
         { id: 'settings', title: 'Einstellungen', render: renderSettingsTool },
     ];
 
@@ -2559,6 +2581,8 @@
 
         let fleet = null;
         let current = 0;
+        // Manche Werkzeuge gibt es nur mit eingeschalteter Manager-Funktion
+        const tools = DASH_TOOLS.filter(t => !t.when || t.when());
         const ctx = {
             body,
             onlyBuildingId,
@@ -2570,7 +2594,7 @@
             // Wachen und Personal werden einmal gelesen und von den Werkzeugen geteilt
             fleet: () => (fleet = fleet || planFleet(onlyBuildingId, text => ctx.status(text))),
             open: async id => {
-                const tool = DASH_TOOLS.find(t => t.id === id) || DASH_TOOLS[0];
+                const tool = tools.find(t => t.id === id) || tools[0];
                 const run = ++current;
                 localStorage.setItem(TAB_KEY, tool.id);
                 tabs.querySelectorAll('a').forEach(tab => tab.classList.toggle('lsshelper-tab-active', tab.dataset.tool === tool.id));
@@ -2591,7 +2615,7 @@
                 }
             },
         };
-        DASH_TOOLS.forEach(tool => {
+        tools.forEach(tool => {
             const tab = dashButton(tool.title, 'lsshelper-tab', () => ctx.open(tool.id));
             tab.dataset.tool = tool.id;
             tabs.append(tab);
@@ -2694,6 +2718,12 @@
             body.dark .lsshelper-mw-counter-table { background: #222; color: #eee; }
             .lsshelper-mw-reset, .lsshelper-mw-hide { margin-right: 4px; }
             .lsshelper-mw-alarmtime { margin-left: 4px; }
+            .lsshelper-cx-menu { min-width: 300px; }
+            .lsshelper-cx-menu > li { display: flex; align-items: center; gap: 4px; padding-right: 8px; }
+            .lsshelper-cx-menu > li.divider { display: block; padding: 0; }
+            .lsshelper-cx-menu > li > a:first-child { flex: 1; }
+            .lsshelper-cx-menu .lsshelper-cx-text { padding: 3px 20px; color: #777; white-space: nowrap; }
+            li.lsshelper-cx-goal > a { background: #2e7d32 !important; color: #fff !important; }
             .lsshelper-mgr-pill { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; white-space: nowrap; vertical-align: middle; }
         `;
         // Größere Bedienelemente nur in den Fenstern (Einsatz, Fahrzeug, Wache), die Hauptseite bleibt kompakt
@@ -2775,6 +2805,8 @@
     };
 
     const formatNumber = n => Math.round(n).toLocaleString('de-DE');
+    // Mit echtem Minuszeichen, damit Beträge in Spalten sauber untereinander stehen
+    const formatSigned = n => (Math.round(n) < 0 ? `−${formatNumber(-n)}` : formatNumber(n));
     // Sekunden als 1:05:09 bzw. 5:09 (wie die Countdowns des Spiels)
     function formatSeconds(seconds) {
         seconds = Math.max(0, Math.floor(seconds));
@@ -3467,6 +3499,505 @@
         link('#mission_next_mission_btn', ordered[position + 1]);
     }
 
+    /* ---------------- Geld: Kategorien der Tageszusammenfassung ---------------- */
+
+    // Reihenfolge zählt: die erste passende Kategorie gewinnt (Fehlalarme vor eigenen Einsätzen)
+    const MONEY_CATEGORIES = [
+        ['allianceMission', 'Verbandseinsätze', /^\[Verband\]/],
+        ['eventMission', 'Event-Einsätze', /Belohnung für das Verbands-Event/],
+        ['falseAlarm', 'Fehlalarme (BMA)', /Fehlalarm/],
+        ['cancelled', 'Abgebrochene Einsätze', / - [aA]bgebrochen$/],
+        ['mission', 'Eigene Einsätze', (desc, names) => names.has(desc.replace(/ \(Brandmeldeanlage\)$/, ''))],
+        ['patients', 'Patienten', /Patienten Behandlung/],
+        ['alliancePatients', 'Verbandseinlieferung Krankenhaus', /Krankenhaus - Verbandseinlieferung/],
+        ['prisoners', 'Gefangene', /Gefangenen? transportiert/],
+        ['alliancePrisoners', 'Verbandseinlieferung Polizei', /Polizei - Verbandseinlieferung/],
+        ['tasks', 'Erfüllte Aufgaben', /Erfüllte Aufgabe/],
+        ['login', 'Login-Bonus', /Täglicher Login-Bonus/],
+        ['vehicles', 'Fahrzeuge gekauft', /Fahrzeug gekauft/],
+        ['equipment', 'Ausrüstung gekauft', /Ausrüstung gekauft/],
+        ['convert', 'Fahrzeuge umgerüstet', /Fahrzeug umgerüstet/],
+        ['buildings', 'Gebäude gebaut/abgerissen', /(Gebäude gebaut|Rückerstattung Gebäude$|Gebäude abgerissen)/],
+        ['upgrades', 'Gebäude ausgebaut', /(Wache (erweitert( \(von Kleinwache\))?|ausgebaut)|Abbrechen:|Rückerstattung Gebäudeausbau|Spezialisierung (abgebrochen|gebaut))/],
+        ['complexes', 'Gebäudekomplexe', /(An den Gebäudekomplex angehängte Gebäude|Aus(bau|gebaut) zu einem Gebäudekomplex)/],
+        ['schoolings', 'Lehrgänge', /(Ausbildung( fremdes)? Personal|Lehrgang)/],
+        ['others', 'Sonstiges', () => true],
+    ];
+    const MONEY_TITLES = Object.fromEntries(MONEY_CATEGORIES.map(([key, title]) => [key, title]));
+
+    const parseCredits = text => parseInt(String(text || '').replace(/[^\d-]/g, '')) || 0;
+
+    // Zeilen der Tageszusammenfassung (#daily_table): Summe, Durchschnitt, Anzahl, Beschreibung
+    async function parseDaily(doc) {
+        const missions = await getMissions().catch(() => ({}));
+        const names = new Set(Object.values(missions).map(m => m.n));
+        return Array.from(doc.querySelectorAll('#daily_table tbody tr'))
+            .map(row => {
+                const cells = row.children;
+                if (cells.length < 4) return null;
+                const desc = cells[3].textContent.trim();
+                const category = MONEY_CATEGORIES.find(([, , test]) => (typeof test === 'function' ? test(desc, names) : test.test(desc)))[0];
+                return { row, total: parseCredits(cells[0].textContent), average: parseCredits(cells[1].textContent), amount: parseCredits(cells[2].textContent), desc, category };
+            })
+            .filter(Boolean);
+    }
+
+    // { income, expense, categories: { key: { income, expense, amount } } }
+    function summarizeMoney(entries) {
+        const sum = { income: 0, expense: 0, categories: {} };
+        entries.forEach(entry => {
+            const cat = (sum.categories[entry.category] = sum.categories[entry.category] || { income: 0, expense: 0, amount: 0 });
+            if (entry.total >= 0) {
+                cat.income += entry.total;
+                sum.income += entry.total;
+            } else {
+                cat.expense -= entry.total;
+                sum.expense -= entry.total;
+            }
+            cat.amount += entry.amount;
+        });
+        return sum;
+    }
+
+    function addMoneyStyles() {
+        if (document.getElementById('lsshelper-money-style')) return;
+        const style = document.createElement('style');
+        style.id = 'lsshelper-money-style';
+        // Farben: Einnahmen Blau, Ausgaben Orange (geprüft für Farbsehschwächen, hell und dunkel)
+        style.textContent = `
+            .lsshelper-money { --m-surface: #fcfcfb; --m-text: #1c1f24; --m-muted: #6b7280; --m-line: #e1e4ea; --m-in: #2a78d6; --m-out: #eb6834; color: var(--m-text); font-size: 13px; }
+            body.dark .lsshelper-money, .lsshelper-dark .lsshelper-money { --m-surface: #1f2229; --m-text: #e8eaed; --m-muted: #9aa3af; --m-line: #323742; --m-in: #3987e5; --m-out: #d95926; }
+            .lsshelper-dash-pane > .lsshelper-money { display: grid; gap: 12px; }
+            .lsshelper-money-box { margin: 8px 0; padding: 10px 12px; background: var(--m-surface); border: 1px solid var(--m-line); border-radius: 10px; }
+            .lsshelper-money-kpis { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 8px; }
+            .lsshelper-money-kpi small { display: block; color: var(--m-muted); font-size: 11px; }
+            .lsshelper-money-kpi b { font-size: 20px; font-weight: 700; }
+            .lsshelper-money-legend { display: flex; gap: 14px; color: var(--m-muted); font-size: 12px; margin: 4px 0; }
+            .lsshelper-money-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+            table.lsshelper-money-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--m-text); background: transparent; }
+            table.lsshelper-money-table th { text-align: left; font-weight: 600; color: var(--m-muted); padding: 4px 6px; border-bottom: 1px solid var(--m-line); white-space: nowrap; }
+            table.lsshelper-money-table td { padding: 4px 6px; border-bottom: 1px solid var(--m-line); vertical-align: middle; }
+            table.lsshelper-money-table td.n, table.lsshelper-money-table th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            table.lsshelper-money-table tr.lsshelper-money-click { cursor: pointer; }
+            table.lsshelper-money-table tr.lsshelper-money-active td { background: rgba(128, 128, 128, 0.15); }
+            .lsshelper-money-bar { display: flex; flex-direction: column; gap: 2px; min-width: 80px; }
+            .lsshelper-money-bar span { display: block; height: 6px; border-radius: 0 4px 4px 0; }
+            .lsshelper-money-chart { position: relative; }
+            .lsshelper-money-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+            .lsshelper-money-chart text { fill: var(--m-muted); font-size: 11px; }
+            .lsshelper-money-tip { position: absolute; z-index: 5; pointer-events: none; padding: 6px 8px; border-radius: 6px; background: var(--m-text); color: var(--m-surface); font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%); }
+            .lsshelper-money-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        `;
+        document.head.append(style);
+    }
+
+    const moneyEl = (tag, cls, text) => {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text !== undefined) node.textContent = text;
+        return node;
+    };
+
+    function moneyKpis(parent, items) {
+        const row = moneyEl('div', 'lsshelper-money-kpis');
+        items.forEach(([label, value]) => {
+            const kpi = moneyEl('div', 'lsshelper-money-kpi');
+            kpi.append(moneyEl('small', '', label), moneyEl('b', '', value));
+            row.append(kpi);
+        });
+        parent.append(row);
+    }
+
+    function moneyLegend(parent) {
+        const legend = moneyEl('div', 'lsshelper-money-legend');
+        [['Einnahmen', 'var(--m-in)'], ['Ausgaben', 'var(--m-out)']].forEach(([label, color]) => {
+            const item = moneyEl('span', '', label);
+            const swatch = moneyEl('i');
+            swatch.style.background = color;
+            item.prepend(swatch);
+            legend.append(item);
+        });
+        parent.append(legend);
+    }
+
+    // Tabelle je Kategorie; Balkenlänge relativ zum größten Betrag. onPick(key|null) filtert, wenn gesetzt.
+    function moneyCategoryTable(parent, summary, { average, days, onPick } = {}) {
+        const rows = Object.entries(summary.categories).sort((a, b) => b[1].income + b[1].expense - (a[1].income + a[1].expense));
+        const max = Math.max(1, ...rows.map(([, c]) => Math.max(c.income, c.expense)));
+        const table = moneyEl('table', 'lsshelper-money-table');
+        const head = table.createTHead().insertRow();
+        const headers = [['Kategorie'], [''], ['Einnahmen', 'n'], ['Ausgaben', 'n'], ['Anzahl', 'n']];
+        if (average) headers.push(['Ø je Buchung', 'n']);
+        if (days > 1) headers.push(['Ø je Tag', 'n']);
+        headers.forEach(([text, cls]) => head.append(moneyEl('th', cls || '', text)));
+        const body = table.createTBody();
+        let active = null;
+        rows.forEach(([key, cat]) => {
+            const row = body.insertRow();
+            const bar = moneyEl('div', 'lsshelper-money-bar');
+            [['income', 'var(--m-in)'], ['expense', 'var(--m-out)']].forEach(([field, color]) => {
+                if (!cat[field]) return;
+                const span = moneyEl('span');
+                span.style.width = `${Math.max(2, (cat[field] / max) * 100)}%`;
+                span.style.background = color;
+                bar.append(span);
+            });
+            const net = cat.income - cat.expense;
+            const cells = [
+                [MONEY_TITLES[key] || key],
+                [bar],
+                [cat.income ? formatNumber(cat.income) : '–', 'n'],
+                [cat.expense ? `−${formatNumber(cat.expense)}` : '–', 'n'],
+                [formatNumber(cat.amount), 'n'],
+            ];
+            if (average) cells.push([cat.amount ? formatSigned(net / cat.amount) : '–', 'n']);
+            if (days > 1) cells.push([formatSigned(net / days), 'n']);
+            cells.forEach(([content, cls]) => {
+                const cell = row.insertCell();
+                if (cls) cell.className = cls;
+                if (content instanceof Node) cell.append(content);
+                else cell.textContent = content;
+            });
+            if (onPick) {
+                row.className = 'lsshelper-money-click';
+                row.title = 'Antippen: nur diese Kategorie zeigen';
+                row.addEventListener('click', () => {
+                    active = active === key ? null : key;
+                    body.querySelectorAll('tr').forEach(r => r.classList.toggle('lsshelper-money-active', r === row && active === key));
+                    onPick(active);
+                });
+            }
+        });
+        parent.append(table);
+        return table;
+    }
+
+    // Säulen um eine Nulllinie: Einnahmen nach oben, Ausgaben nach unten; Antippen/Hover zeigt die Werte
+    function moneyDayChart(parent, days) {
+        const width = 640;
+        const height = 220;
+        const pad = { top: 12, bottom: 24, left: 44, right: 8 };
+        const max = Math.max(1, ...days.map(d => Math.max(d.income, d.expense)));
+        const plotH = height - pad.top - pad.bottom;
+        const zero = pad.top + plotH / 2;
+        const scale = v => (v / max) * (plotH / 2);
+        const band = (width - pad.left - pad.right) / days.length;
+        const bar = Math.min(24, band * 0.6);
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', 'Einnahmen und Ausgaben pro Tag');
+        const add = (tag, attrs, text) => {
+            const node = document.createElementNS(ns, tag);
+            Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+            if (text !== undefined) node.textContent = text;
+            svg.append(node);
+            return node;
+        };
+        const compact = v => (v >= 1e6 ? `${(v / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio` : v >= 1e3 ? `${Math.round(v / 1e3)}K` : String(Math.round(v)));
+        // Hilfslinien: Null, halbe und volle Höhe
+        [max, max / 2, 0, -max / 2, -max].forEach(v => {
+            const y = zero - (v >= 0 ? scale(v) : -scale(-v));
+            add('line', { x1: pad.left, x2: width - pad.right, y1: y, y2: y, stroke: 'var(--m-line)', 'stroke-width': v === 0 ? 1.5 : 1 });
+            add('text', { x: pad.left - 6, y: y + 4, 'text-anchor': 'end' }, `${v < 0 ? '−' : ''}${compact(Math.abs(v))}`);
+        });
+        // Säule mit 4px-Rundung am freien Ende, eckig an der Nulllinie
+        const column = (x, h, up, color) => {
+            if (h < 0.5) return null;
+            const r = Math.min(4, h, bar / 2);
+            const y0 = zero;
+            const y1 = up ? zero - h : zero + h;
+            const d = up
+                ? `M${x},${y0} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + bar - r} Q${x + bar},${y1} ${x + bar},${y1 + r} V${y0} Z`
+                : `M${x},${y0} V${y1 - r} Q${x},${y1} ${x + r},${y1} H${x + bar - r} Q${x + bar},${y1} ${x + bar},${y1 - r} V${y0} Z`;
+            return add('path', { d, fill: color });
+        };
+        const wrap = moneyEl('div', 'lsshelper-money-chart');
+        const tip = moneyEl('div', 'lsshelper-money-tip');
+        tip.hidden = true;
+        days.forEach((day, i) => {
+            const x = pad.left + i * band + (band - bar) / 2;
+            column(x, scale(day.income), true, 'var(--m-in)');
+            column(x, scale(day.expense), false, 'var(--m-out)');
+            add('text', { x: x + bar / 2, y: height - 6, 'text-anchor': 'middle' }, day.label);
+            // Trefferfläche: die ganze Spalte, größer als die Säule
+            const hit = add('rect', { x: pad.left + i * band, y: pad.top, width: band, height: plotH, fill: 'transparent' });
+            const show = () => {
+                tip.hidden = false;
+                tip.textContent = `${day.title}: +${formatNumber(day.income)} / −${formatNumber(day.expense)} = ${formatSigned(day.income - day.expense)}`;
+                tip.style.left = `${((x + bar / 2) / width) * 100}%`;
+                tip.style.top = `${(pad.top / height) * 100}%`;
+            };
+            hit.addEventListener('pointerenter', show);
+            hit.addEventListener('click', show);
+            hit.addEventListener('pointerleave', () => (tip.hidden = true));
+        });
+        wrap.append(svg, tip);
+        parent.append(wrap);
+    }
+
+    function downloadCsv(name, rows) {
+        const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(';')).join('\n');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }));
+        link.download = name;
+        document.body.append(link);
+        link.click();
+        setTimeout(() => (URL.revokeObjectURL(link.href), link.remove()), 1000);
+    }
+
+    /* ---------------- Geld: Tageszusammenfassung (/credits/daily) ---------------- */
+
+    async function dailySummary() {
+        if (!managerOn('dcSummary')) return;
+        const table = document.getElementById('daily_table');
+        if (!table) return;
+        addMoneyStyles();
+        const entries = await parseDaily(document);
+        const summary = summarizeMoney(entries);
+        const root = moneyEl('div', 'lsshelper-money');
+        const box = moneyEl('div', 'lsshelper-money-box');
+        root.append(box);
+        moneyKpis(box, [
+            ['Einnahmen', formatNumber(summary.income)],
+            ['Ausgaben', `−${formatNumber(summary.expense)}`],
+            ['Saldo', formatSigned(summary.income - summary.expense)],
+        ]);
+        moneyLegend(box);
+        // Antippen einer Kategorie blendet die übrigen Zeilen der Spieltabelle aus
+        moneyCategoryTable(box, summary, {
+            average: settings.dcAverage,
+            onPick: key => entries.forEach(entry => (entry.row.style.display = !key || entry.category === key ? '' : 'none')),
+        });
+        const tools = moneyEl('div', 'lsshelper-money-tools');
+        const exportBtn = moneyEl('a', 'btn btn-default btn-xs', 'Als CSV exportieren');
+        exportBtn.href = '#';
+        exportBtn.addEventListener('click', e => {
+            e.preventDefault();
+            const page = new URLSearchParams(location.search).get('page') || '0';
+            downloadCsv(`credits-tag-${page}.csv`, [['Kategorie', 'Beschreibung', 'Summe', 'Durchschnitt', 'Anzahl'], ...entries.map(e => [MONEY_TITLES[e.category], e.desc, e.total, e.average, e.amount])]);
+        });
+        tools.append(exportBtn);
+        box.append(tools);
+        const anchor = document.querySelector('.page-header') || table;
+        if (anchor === table) table.before(root);
+        else anchor.after(root);
+    }
+
+    /* ---------------- Geld: Verlauf der letzten Tage (Dashboard) ---------------- */
+
+    const MONEY_CACHE_KEY = 'lsshelper_money_days_v1';
+    const dayKey = offset => {
+        const d = new Date();
+        d.setDate(d.getDate() - offset);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    async function renderMoneyTool(ctx) {
+        addMoneyStyles();
+        const count = Math.min(30, Math.max(1, settings.cxHistoryDays || 7));
+        const cache = readJson(MONEY_CACHE_KEY, {});
+        const days = [];
+        // Abgeschlossene Tage ändern sich nicht mehr und kommen aus dem Speicher; heute wird immer neu gelesen
+        for (let offset = count - 1; offset >= 0; offset--) {
+            const key = dayKey(offset);
+            let entry = offset > 0 ? cache[key] : null;
+            if (!entry) {
+                ctx.status(`Lese Tageszusammenfassung … ${count - offset}/${count}`);
+                const doc = await fetchDoc(`/credits/daily?page=${offset}`);
+                const parsed = await parseDaily(doc);
+                entry = summarizeMoney(parsed.map(({ row, ...rest }) => rest));
+                if (offset > 0) cache[key] = entry;
+                await sleep(150);
+            }
+            const date = new Date(`${key}T12:00:00`);
+            days.push(Object.assign({ key, label: offset === 0 ? 'heute' : date.toLocaleDateString('de-DE', { weekday: 'short' }), title: date.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' }) }, entry));
+        }
+        // Nur die letzten 60 Tage aufheben
+        Object.keys(cache)
+            .sort()
+            .slice(0, -60)
+            .forEach(key => delete cache[key]);
+        writeJson(MONEY_CACHE_KEY, cache);
+
+        const total = { income: 0, expense: 0, categories: {} };
+        days.forEach(day => {
+            total.income += day.income;
+            total.expense += day.expense;
+            Object.entries(day.categories).forEach(([key, cat]) => {
+                const t = (total.categories[key] = total.categories[key] || { income: 0, expense: 0, amount: 0 });
+                t.income += cat.income;
+                t.expense += cat.expense;
+                t.amount += cat.amount;
+            });
+        });
+        ctx.status(`Einnahmen und Ausgaben der letzten ${count} Tage (heute zählt bis jetzt).`);
+        const root = moneyEl('div', 'lsshelper-money');
+        ctx.body.append(root);
+        const card = dashCard(root, `Verlauf · ${count} Tage`);
+        moneyKpis(card, [
+            ['Einnahmen', formatNumber(total.income)],
+            ['Ausgaben', `−${formatNumber(total.expense)}`],
+            ['Saldo', formatSigned(total.income - total.expense)],
+            ['Ø Saldo je Tag', formatSigned((total.income - total.expense) / count)],
+        ]);
+        moneyLegend(card);
+        moneyDayChart(card, days);
+        // Tabellenansicht der Tage (für Werte ohne Antippen und als Alternative zum Diagramm)
+        const dayTable = moneyEl('table', 'lsshelper-money-table');
+        const head = dayTable.createTHead().insertRow();
+        [['Tag'], ['Einnahmen', 'n'], ['Ausgaben', 'n'], ['Saldo', 'n']].forEach(([text, cls]) => head.append(moneyEl('th', cls || '', text)));
+        const body = dayTable.createTBody();
+        days
+            .slice()
+            .reverse()
+            .forEach(day => {
+                const row = body.insertRow();
+                [[day.title], [formatNumber(day.income), 'n'], [`−${formatNumber(day.expense)}`, 'n'], [formatSigned(day.income - day.expense), 'n']].forEach(([text, cls]) => {
+                    const cell = row.insertCell();
+                    cell.textContent = text;
+                    if (cls) cell.className = cls;
+                });
+            });
+        card.append(dayTable);
+        const breakdown = dashCard(root, 'Aufschlüsselung nach Kategorie');
+        moneyLegend(breakdown);
+        moneyCategoryTable(breakdown, total, { average: settings.dcAverage, days: count });
+        breakdown.head.append(
+            dashButton('Als CSV exportieren', '', () =>
+                downloadCsv('credits-verlauf.csv', [
+                    ['Tag', 'Kategorie', 'Einnahmen', 'Ausgaben', 'Anzahl'],
+                    ...days.flatMap(day => Object.entries(day.categories).map(([key, cat]) => [day.key, MONEY_TITLES[key] || key, cat.income, cat.expense, cat.amount])),
+                ])
+            ),
+            dashButton('Neu laden', 'lsshelper-btn-quiet', () => {
+                localStorage.removeItem(MONEY_CACHE_KEY);
+                ctx.open('money');
+            })
+        );
+    }
+
+    /* ---------------- Geld: Credits-Menü in der Kopfleiste ---------------- */
+
+    const RANKS = {
+        fire: [[0, 'Anwärter(in)'], [200, 'Feuerwehrmann/-frau'], [1e4, 'Oberfeuerwehrmann/-frau'], [1e5, 'Hauptfeuerwehrmann/-frau'], [1e6, 'Stv. Gruppenführer(in)'], [5e6, 'Gruppenführer(in)'], [1e7, 'Stv. Zugführer(in)'], [2e7, 'Zugführer(in)'], [5e7, 'Stv. Wehrführer(in)'], [1e8, 'Wehrführer(in)'], [2e8, 'Stv. Kreisbrandmeister(in)'], [5e8, 'Kreisbrandmeister(in)'], [1e9, 'Stv. Landesbrandmeister(in)'], [2e9, 'Landesbrandmeister(in)'], [5e9, 'Ehrenmitglied'], [1e10, 'Stv. Bundesbranddirektor(in)'], [2e10, 'Bundesbranddirektor(in)'], [5e10, 'Stv. Internationale(r) Branddirektor(in)'], [1e11, 'Internationaler Branddirektor(in)']],
+        police: [[0, 'Polizeimeisteranwärter(in)'], [200, 'Polizeimeister(in)'], [1e4, 'Polizeiobermeister(in)'], [1e5, 'Polizeihauptmeister(in)'], [1e6, 'Polizeikommissar(in)'], [5e6, 'Polizeioberkommissar(in)'], [1e7, 'Polizeihauptkommissar(in)'], [2e7, 'Erste(r) Polizeihauptkommissar(in)'], [5e7, 'Polizeirat / Polizeirätin'], [1e8, 'Polizeioberrat / Polizeioberrätin'], [2e8, 'Polizeidirektor(in)'], [5e8, 'Leitende(r) Polizeidirektor(in)'], [1e9, 'Direktor(in) der Bundespolizei'], [2e9, 'Präsident(in) der Bundespolizeidirektion'], [5e9, 'Vizepräsident(in) der Bundespolizei'], [1e10, 'Präsident(in) der Bundespolizei'], [2e10, 'Generalinspekteur(in) der Polizei'], [5e10, 'Oberste(r) Polizeidirektor(in)'], [1e11, 'Generaloberkommissar(in)']],
+    };
+    const GOAL_KEY = 'lsshelper_cx_goal_ack';
+
+    function creditsMenu() {
+        if (!managerOn('cxMenu') || inFrame) return;
+        const creditsValue = document.querySelector('.credits-value');
+        const creditsItem = creditsValue && creditsValue.closest('li');
+        if (!creditsItem) return;
+        addManagerStyles();
+        const coinsValue = document.querySelector('.coins-value');
+        const coinsItem = coinsValue && coinsValue.closest('li');
+        const state = { credits: parseCredits(creditsValue.textContent), coins: coinsValue ? parseCredits(coinsValue.textContent) : 0, info: null };
+        const goals = String(settings.cxGoals || '')
+            .split(/[,;\s]+/)
+            .map(text => parseInt(text.replace(/\D/g, '')))
+            .filter(n => n > 0)
+            .sort((a, b) => a - b);
+
+        const item = moneyEl('li', 'dropdown lsshelper-cx');
+        const toggle = moneyEl('a', 'dropdown-toggle');
+        toggle.href = '#';
+        toggle.setAttribute('role', 'button');
+        toggle.setAttribute('data-toggle', 'dropdown');
+        const menu = moneyEl('ul', 'dropdown-menu lsshelper-cx-menu');
+        menu.setAttribute('role', 'menu');
+        item.append(toggle, menu);
+        creditsItem.before(item);
+        // Die Originale bleiben im DOM (das Spiel aktualisiert sie weiter), werden aber ausgeblendet
+        creditsItem.style.display = 'none';
+        if (coinsItem && coinsItem !== creditsItem) coinsItem.style.display = 'none';
+
+        const link = (text, href, extra) => {
+            const li = moneyEl('li');
+            const a = moneyEl('a', 'lightbox-open', text);
+            a.href = href;
+            li.append(a);
+            if (extra) extra.forEach(([label, url]) => {
+                const btn = moneyEl('a', 'lightbox-open btn btn-xs btn-default lsshelper-cx-sub', label);
+                btn.href = url;
+                li.append(btn);
+            });
+            menu.append(li);
+        };
+        const textItem = text => menu.append(moneyEl('li', 'lsshelper-cx-text', text));
+        const divider = () => menu.append(moneyEl('li', 'divider'));
+
+        const ranks = /polizei\./.test(location.hostname) ? RANKS.police : RANKS.fire;
+        const render = () => {
+            const reached = goals.filter(goal => state.credits >= goal).pop() || 0;
+            let ack = parseInt(localStorage.getItem(GOAL_KEY) || '0');
+            // Nach Ausgaben unter ein Ziel gefallen: beim nächsten Erreichen wieder melden
+            if (reached < ack) localStorage.setItem(GOAL_KEY, String((ack = reached)));
+            item.classList.toggle('lsshelper-cx-goal', reached > ack);
+            toggle.textContent = settings.cxCreditsInNav ? `💰 ${formatNumber(state.credits)} ` : '💰 ';
+            toggle.append(moneyEl('b', 'caret'));
+            const next = goals.find(goal => goal > state.credits);
+            if (settings.cxGoalBar && next) {
+                const prev = goals.filter(goal => goal <= state.credits).pop() || 0;
+                const pct = Math.max(0, Math.min(100, ((state.credits - prev) / (next - prev)) * 100));
+                item.style.backgroundImage = `linear-gradient(90deg, rgba(76, 175, 80, 0.45) ${pct}%, transparent ${pct}%)`;
+            } else item.style.backgroundImage = '';
+
+            menu.textContent = '';
+            link(`Credits: ${formatNumber(state.credits)}`, '/credits', [['Tag', '/credits/daily'], ['Übersicht', '/credits/overview']]);
+            link(`Coins: ${formatNumber(state.coins)}`, '/coins', [['Liste', '/coins/list']]);
+            const info = state.info;
+            if (info) {
+                divider();
+                textItem(`Insgesamt verdient: ${formatNumber(info.credits_user_total)}`);
+                const nextRank = ranks.find(([credits]) => credits > info.credits_user_total);
+                if (nextRank) link(`Nächster Rang: ${nextRank[1]} – noch ${formatNumber(nextRank[0] - info.credits_user_total)} Credits`, '/level');
+                if (settings.cxToplist && info.user_toplist_position) link(`Platz in der Topliste: ${formatNumber(info.user_toplist_position)}`, `/toplist?page=${Math.ceil(info.user_toplist_position / 20)}`);
+                if (settings.cxAllianceFunds && info.credits_alliance_active) {
+                    divider();
+                    link(`Verbandskasse: ${formatNumber(info.credits_alliance_current || 0)} (gesamt ${formatNumber(info.credits_alliance_total || 0)})`, '/verband/kasse');
+                }
+            }
+            if (next) {
+                divider();
+                textItem(`Nächstes Ziel: ${formatNumber(next)} – noch ${formatNumber(next - state.credits)}`);
+            }
+        };
+        // Antippen bestätigt ein erreichtes Ziel
+        toggle.addEventListener('click', () => {
+            const reached = goals.filter(goal => state.credits >= goal).pop() || 0;
+            localStorage.setItem(GOAL_KEY, String(reached));
+            item.classList.remove('lsshelper-cx-goal');
+        });
+
+        const loadInfo = () =>
+            fetchJson('/api/userinfo')
+                .then(info => {
+                    state.info = info;
+                    if (typeof info.coins_user_current === 'number') state.coins = info.coins_user_current;
+                    render();
+                })
+                .catch(log);
+        hookGame('creditsUpdate', credits => {
+            const value = Number(credits);
+            if (isNaN(value) || value === state.credits) return;
+            if (state.info && value > state.credits) state.info.credits_user_total += value - state.credits;
+            state.credits = value;
+            render();
+        });
+        hookGame('coinsUpdate', coins => {
+            if (isNaN(Number(coins))) return;
+            state.coins = Number(coins);
+            render();
+        });
+        render();
+        // Zusatzinfos mit Abstand zum Seitenaufbau, danach alle 5 Minuten (Topliste)
+        setTimeout(loadInfo, 5000);
+        setInterval(loadInfo, 5 * 60 * 1000);
+    }
+
     /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
@@ -3486,6 +4017,8 @@
         { name: 'missionList', match: /^\/$/, run: missionList },
         { name: 'missionWindow', match: /^\/missions\/\d+/, run: missionWindow },
         { name: 'stagingCounter', match: /^\/buildings\/\d+/, run: stagingCounter },
+        { name: 'creditsMenu', match: /^\/$/, run: creditsMenu },
+        { name: 'dailySummary', match: /^\/credits\/daily\/?$/, run: dailySummary },
         { name: 'missionWindowOrder', match: /^\/missions\/\d+/, run: missionWindowOrder },
     ];
 

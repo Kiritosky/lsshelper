@@ -83,6 +83,18 @@
         dcAverage: true,
         cxHistory: true,
         cxHistoryDays: 7,
+        rdSkin: true,
+        rdNextTransport: true,
+        rdTransportCount: true,
+        rdHospital: true,
+        rdMaxTax: 10,
+        rdPreferOwn: true,
+        rdPrison: true,
+        rdAutoOpenTransport: false,
+        rdVehicleMissions: true,
+        rdTables: true,
+        rdTasks: true,
+        rdProfile: true,
         mlEventList: '🇪🇺: 704, 705, 706, 707, 708; ❄️: 53, 428, 581, 665, 677, 787, 788, 789, 793, 794, 795, 831, 861, 861/a, 861/b, 861/ab, 862, 862/a; 🌞: 183, 184, 185, 461, 546, 546/a, 547, 548, 646, 647, 648, 754, 863, 863/a; 🌹: 360, 361, 362, 363, 364, 365, 597, 598, 599, 600, 601, 602, 603, 604, 605, 790, 791, 792, 833, 834, 917, 918, 919, 920; 🌼: 722, 723, 724, 725, 726, 727, 728, 729, 730, 965; 🍂: 672, 673, 674, 675, 676, 677, 678, 679, 680; 🍺: 88, 216, 217, 218, 219, 220, 452, 453, 454, 456, 457, 626, 627, 628, 629, 629/a, 630, 844, 845, 846; 🎃: 111, 112, 113, 114, 115, 116, 116/a, 117, 118, 118/a, 119, 943, 944, 945, 946; 🎅: 52, 54, 55, 56, 129, 130, 202, 203, 582, 583, 583/a, 584, 584/a, 584/b, 584/ab, 585, 585/a, 585/b, 585/ab, 586, 587, 588, 589, 590, 783, 784, 785, 786, 901, 911, 912, 913; 🎈: 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772; 🏅: 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878; 💐: 360, 742, 743, 744, 745, 746, 747, 748, 847, 847/a; 🥅: 371, 372, 373, 374, 375, 376, 641, 642, 849, 850, 850/a, 851, 852; 🥚: 284, 285, 286, 286/a, 286/b, 286/ab, 287, 288, 289, 290, 291, 291/a, 442, 443, 444, 445, 446, 618, 618/a, 618/b, 618/ab, 732, 733, 733/a, 733/b, 733/ab, 734, 735, 735/a, 736, 737, 739, 739/a, 927, 927/a, 928, 928/a, 928/b, 928/c, 928/ab, 928/ac, 928/bc, 928/abc, 929, 929/a, 929/b, 929/ab; 🥸: 710, 711, 712, 713, 714, 715, 716, 717, 718, 719; 🧨: 259, 259-0, 260, 261, 262, 263, 264, 265, 266, 267, 268, 268/a, 269, 270, 326, 591, 695, 695/a, 695/b, 695/ab, 695-0, 695-0/a, 695-0/b, 695-0/ab, 695-1, 695-1/a, 695-1/b, 695-1/ab',
     };
     const SETTINGS_LABELS = {
@@ -143,6 +155,18 @@
         dcAverage: '… Durchschnitt pro Buchung anzeigen',
         cxHistory: 'Dashboard-Reiter „Geld“: Einnahmen und Ausgaben der letzten Tage',
         cxHistoryDays: '… so viele Tage (1–30)',
+        rdSkin: 'Modernere Optik für Spielseiten im Fenster (Karten, größere Knöpfe)',
+        rdNextTransport: 'Nach Krankenhaus-/Zellenwahl automatisch zum nächsten Sprechwunsch (sonst zurück zum Einsatz)',
+        rdTransportCount: '… Zahl offener Sprechwünsche anzeigen',
+        rdHospital: 'Krankenhauswahl: Knopf „bestes Krankenhaus“, Filter und Sortierung',
+        rdMaxTax: '… Verbands-Krankenhäuser/-Zellen nur bis zu so viel % Abgabe vorschlagen',
+        rdPreferOwn: '… eigene Krankenhäuser/Zellen vorziehen, auch wenn ein Verbandsgebäude näher ist',
+        rdPrison: 'Zellenwahl: Knopf „beste Zelle“',
+        rdAutoOpenTransport: 'Im Einsatzfenster einen Sprechwunsch automatisch öffnen',
+        rdVehicleMissions: 'Fahrzeugseite: Einsätze mit Ø Credits, beste zuerst',
+        rdTables: 'Listen (Credits, Coins, Topliste, Verband, Lehrgänge …): Suche, Sortierung, alle Seiten laden',
+        rdTasks: 'Aufgaben: abholbare nach oben und hervorheben, erledigte ausblendbar',
+        rdProfile: 'Profil: Gebäudeliste nach Leitstelle mit Suche und Typ-Filter',
     };
     // Aufbau der Einstellungsseite. Gruppen mit master hängen an diesem Schalter: ist er aus, wirkt keine ihrer Einstellungen.
     const SETTINGS_SECTIONS = [
@@ -159,6 +183,7 @@
                     keys: ['mwCredits', 'mwGenerated', 'mwGeneratedYellow', 'mwExpireRed', 'mwPatientSummary', 'mwCollapsePatients', 'mwPatientTime', 'mwCounters', 'mwStickyHeader', 'mwLoadInHeader', 'mwHideVehicleList', 'mwCenterMap', 'mwVehicleType', 'mwAlarmTime', 'mwReset', 'mwStagingCounter'],
                 },
                 { title: 'Geld', keys: ['cxMenu', 'cxCreditsInNav', 'cxToplist', 'cxAllianceFunds', 'cxGoals', 'cxGoalBar', 'dcSummary', 'dcAverage', 'cxHistory', 'cxHistoryDays'] },
+                { title: 'Redesign & Sprechwünsche', keys: ['rdSkin', 'rdNextTransport', 'rdTransportCount', 'rdHospital', 'rdMaxTax', 'rdPreferOwn', 'rdPrison', 'rdAutoOpenTransport', 'rdVehicleMissions', 'rdTables', 'rdTasks', 'rdProfile'] },
                 { title: 'Einsatzliste', keys: ['mlCredits', 'mlRemaining', 'mlRemainingGreen', 'mlPatients', 'mlHideZero', 'mlPatientTime', 'mlPumpTime', 'mlStar', 'mlCollapse', 'mlSort', 'mlSortWindow', 'mlShare', 'mlShareMin', 'mlEvents', 'mlEventList'] },
             ],
         },
@@ -2724,6 +2749,20 @@
             .lsshelper-cx-menu > li > a:first-child { flex: 1; }
             .lsshelper-cx-menu .lsshelper-cx-text { padding: 3px 20px; color: #777; white-space: nowrap; }
             li.lsshelper-cx-goal > a { background: #2e7d32 !important; color: #fff !important; }
+            .lsshelper-rd-transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+            a.lsshelper-rd-best { padding: 10px 16px; font-size: 16px; font-weight: 700; text-align: left; white-space: normal; }
+            a.lsshelper-rd-best small { font-weight: 400; font-size: 12px; }
+            .lsshelper-rd-filters { display: flex; gap: 14px; }
+            .lsshelper-rd-filters label { font-weight: normal; margin: 0; }
+            .lsshelper-rd-count { font-size: 12px; }
+            th.lsshelper-rd-sort { cursor: pointer; user-select: none; }
+            th.lsshelper-rd-sort[data-lsshelper-dir]::after { content: ' ' attr(data-lsshelper-dir); }
+            .lsshelper-rd-listbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+            .lsshelper-rd-listbar input[type="search"] { max-width: 260px; }
+            .lsshelper-rd-listcount { opacity: 0.75; }
+            .task_panel.lsshelper-rd-claim { box-shadow: 0 0 0 3px #2e7d32; }
+            .lsshelper-rd-tasks { margin: 6px 0; }
+            .lsshelper-rd-profile select { max-width: 280px; margin-bottom: 6px; }
             .lsshelper-mgr-pill { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; white-space: nowrap; vertical-align: middle; }
         `;
         // Größere Bedienelemente nur in den Fenstern (Einsatz, Fahrzeug, Wache), die Hauptseite bleibt kompakt
@@ -3998,6 +4037,414 @@
         setInterval(loadInfo, 5 * 60 * 1000);
     }
 
+    /* ---------------- Redesign: Optik der Spielseiten im Fenster ---------------- */
+
+    function redesignSkin() {
+        if (!managerOn('rdSkin') || !inFrame || document.getElementById('lsshelper-skin')) return;
+        const style = document.createElement('style');
+        style.id = 'lsshelper-skin';
+        style.textContent = `
+            body { font-size: 14px; }
+            h1 { font-size: 24px; font-weight: 700; }
+            .panel { border-radius: 10px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); overflow: hidden; }
+            .panel-heading { font-weight: 600; }
+            .btn { border-radius: 6px; }
+            .btn-xs { padding: 3px 8px; }
+            .alert { border-radius: 8px; }
+            .table > thead > tr > th { border-bottom-width: 1px; font-weight: 600; opacity: 0.85; white-space: nowrap; }
+            .table > tbody > tr > td { padding-top: 7px; padding-bottom: 7px; vertical-align: middle; }
+            .label { border-radius: 10px; padding: 0.25em 0.65em; }
+            .pagination > li > a, .pagination > li > span { min-width: 34px; text-align: center; }
+            .nav-tabs > li > a { border-radius: 8px 8px 0 0; }
+        `;
+        document.head.append(style);
+    }
+
+    /* ---------------- Redesign: Fahrzeugseite und Sprechwünsche ---------------- */
+
+    // Offene Sprechwünsche (Status 5) zählt das Hauptfenster: einmal aus der API, danach über die Funkmeldungen
+    function transportCounter() {
+        if (!managerOn('rdTransportCount') || inFrame) return;
+        const open = new Set();
+        shared.fms5 = open;
+        hookGame('radioMessage', message => {
+            if (!message || message.type !== 'vehicle_fms' || message.user_id !== window.user_id) return;
+            if (message.fms_real === 5) open.add(message.id);
+            else open.delete(message.id);
+        });
+        shared.fms5Load = () =>
+            (shared.fms5Loading =
+                shared.fms5Loading ||
+                fetchJson('/api/vehicles')
+                    .then(vehicles => vehicles.forEach(v => v.fms_real === 5 && open.add(v.id)))
+                    .catch(log));
+    }
+
+    const vehicleIdFromPath = () => (location.pathname.match(/^\/vehicles\/(\d+)/) || [])[1];
+
+    // Nach der Wahl von Krankenhaus oder Zelle: weiter zum nächsten Sprechwunsch, sonst zurück zum Einsatz, sonst Fenster schließen
+    function nextTransport() {
+        if (!managerOn('rdNextTransport')) return;
+        const afterChoice = /^\/vehicles\/\d+\/(patient|gefangener)\/-?\d+/.test(location.pathname);
+        // Auf der normalen Fahrzeugseite nur nach einer Erfolgsmeldung – sonst könnte man kein Fahrzeug mehr ansehen
+        if (!afterChoice && !(document.querySelector('.alert-success') && !document.querySelector('[data-transport-request="true"]'))) return;
+        const next = document.getElementById('next-vehicle-fms-5');
+        const mission = document.querySelector('a.btn.btn-success[href^="/missions/"]');
+        setTimeout(() => {
+            if (next) return next.click();
+            if (!afterChoice) return;
+            if (mission) return mission.click();
+            if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
+        }, 300);
+    }
+
+    // Krankenhaus-Tabellen: eigene [Name, Entfernung, Betten, Fachabteilung, Knopf], Verband [Name, Entfernung, Betten, Abgabe, Fachabteilung, Knopf]
+    function parseHospitals(list) {
+        return Array.from(document.querySelectorAll(`table#${list}-hospitals tbody tr`))
+            .filter(row => row.children.length > 1)
+            .map(row => {
+                const own = list === 'own';
+                const cells = row.children;
+                const button = cells[own ? 4 : 5] && cells[own ? 4 : 5].querySelector('a');
+                return {
+                    row,
+                    list,
+                    name: (cells[0].firstChild ? cells[0].firstChild.textContent : cells[0].textContent).trim(),
+                    distance: parseFloat(cells[1].textContent.replace(',', '.')) || 999,
+                    beds: parseInt(cells[2].textContent) || 0,
+                    tax: own ? 0 : parseInt(cells[3].textContent) || 0,
+                    department: !!(cells[own ? 3 : 4] && cells[own ? 3 : 4].querySelector('.label-success')),
+                    button,
+                    usable: !!button && !button.classList.contains('btn-danger') && !button.classList.contains('disabled'),
+                };
+            });
+    }
+
+    // Zellen stehen nur als Skriptdaten in der Seite (erb_prisons.push({...}))
+    function parsePrisons() {
+        const cells = [];
+        Array.from(document.scripts).forEach(script => {
+            const text = script.textContent || '';
+            [['own', /erb_prisons\.push\((\{.*?\})\)/g], ['alliance', /erb_alliance_prisons\.push\((\{.*?\})\)/g]].forEach(([list, pattern]) => {
+                let match;
+                while ((match = pattern.exec(text))) {
+                    try {
+                        const raw = JSON.parse(match[1]);
+                        cells.push({ list, id: raw.id, name: raw.name, free: Number(raw.free_cells) || 0, distance: parseFloat(raw.distance_in_km) || 999, tax: parseInt((String(raw.caption).match(/(\d+)\s*%\)/) || [])[1]) || 0 });
+                    } catch (e) {
+                        log('Zelle nicht lesbar', e);
+                    }
+                }
+            });
+        });
+        return cells;
+    }
+
+    function transportTools() {
+        const request = document.querySelector('[data-transport-request="true"]');
+        if (!settings.manager || !request) return;
+        addManagerStyles();
+        const vehicleId = vehicleIdFromPath();
+        const box = document.createElement('div');
+        box.className = 'lsshelper-rd-transport';
+        const type = request.getAttribute('data-transport-request-type');
+        const choose = (label, detail, onTap) => {
+            const btn = document.createElement('a');
+            btn.href = '#';
+            btn.className = 'btn btn-success lsshelper-rd-best';
+            btn.textContent = label;
+            if (detail) btn.append(document.createElement('br'), Object.assign(document.createElement('small'), { textContent: detail }));
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                onTap();
+            });
+            box.append(btn);
+        };
+        // Nächstes zuerst; mit „eigene vorziehen“ zählt ein Verbandsgebäude erst, wenn kein eigenes passt
+        const byQuality = (a, b) => (settings.rdPreferOwn && a.list !== b.list ? (a.list === 'own' ? -1 : 1) : a.distance - b.distance);
+
+        if (type === 'patient' && managerOn('rdHospital')) {
+            const hospitals = parseHospitals('own').concat(parseHospitals('alliance'));
+            const allowed = h => h.usable && h.beds > 0 && (h.list === 'own' || h.tax <= settings.rdMaxTax);
+            // Bevorzugt mit passender Fachabteilung; gibt es keine, dann das nächste freie
+            const best = hospitals.filter(h => allowed(h) && h.department).sort(byQuality)[0] || hospitals.filter(allowed).sort(byQuality)[0];
+            if (best) {
+                choose(`🏥 ${best.name}`, `${String(best.distance).replace('.', ',')} km · ${best.beds} Betten frei${best.department ? ' · Fachabteilung' : ' · ohne Fachabteilung'}${best.list === 'alliance' ? ` · Verband ${best.tax} %` : ''}`, () => best.button.click());
+            } else {
+                box.append(Object.assign(document.createElement('div'), { className: 'alert alert-warning', textContent: 'Kein passendes Krankenhaus frei.' }));
+            }
+            // Filter für beide Tabellen
+            const filters = document.createElement('div');
+            filters.className = 'lsshelper-rd-filters';
+            const state = { department: false, free: true };
+            const apply = () =>
+                hospitals.forEach(h => {
+                    h.row.style.display = (state.department && !h.department) || (state.free && h.beds <= 0) ? 'none' : '';
+                });
+            [['free', 'nur freie Betten'], ['department', 'nur mit Fachabteilung']].forEach(([key, label]) => {
+                const wrap = document.createElement('label');
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.checked = state[key];
+                input.addEventListener('change', () => ((state[key] = input.checked), apply()));
+                wrap.append(input, ` ${label}`);
+                filters.append(wrap);
+            });
+            box.append(filters);
+            apply();
+            document.querySelectorAll('table#own-hospitals, table#alliance-hospitals').forEach(table => makeSortable(table));
+        }
+        if (type === 'prisoner' && managerOn('rdPrison') && vehicleId) {
+            const cells = parsePrisons();
+            const best = cells.filter(c => c.free > 0 && (c.list === 'own' || c.tax <= settings.rdMaxTax)).sort(byQuality)[0];
+            if (best) choose(`🚓 ${best.name}`, `${String(best.distance).replace('.', ',')} km · ${best.free} Zellen frei${best.list === 'alliance' ? ` · Verband ${best.tax} %` : ''}`, () => (location.href = `/vehicles/${vehicleId}/gefangener/${best.id}`));
+            else if (cells.length) box.append(Object.assign(document.createElement('div'), { className: 'alert alert-warning', textContent: 'Keine passende Zelle frei.' }));
+        }
+        if (managerOn('rdTransportCount')) {
+            const counter = document.createElement('span');
+            counter.className = 'label label-warning lsshelper-rd-count';
+            box.append(counter);
+            try {
+                const top = window.top.LSSHelperShared;
+                if (top && top.fms5) {
+                    const show = () => (counter.textContent = `Offene Sprechwünsche: ${top.fms5.size}`);
+                    show();
+                    if (top.fms5Load) top.fms5Load().then(show);
+                } else counter.remove();
+            } catch (e) {
+                counter.remove();
+            }
+        }
+        if (box.childElementCount) request.before(box);
+    }
+
+    // Einsatzfenster: roten Sprechwunsch-Hinweis von selbst öffnen
+    function autoOpenTransport() {
+        if (!managerOn('rdAutoOpenTransport')) return;
+        const link = document.querySelector('.alert.alert-danger:not(.alert-missing-vehicles) a.btn.btn-success[href^="/vehicles/"]');
+        if (link) setTimeout(() => link.click(), 400);
+    }
+
+    // Fahrzeugseite: Einsätze in der Nähe mit Ø Credits, beste zuerst
+    async function vehicleMissions() {
+        if (!managerOn('rdVehicleMissions')) return;
+        const tables = Array.from(document.querySelectorAll('#mission_own, #mission_alliance'));
+        if (!tables.length) return;
+        const missions = await getMissions().catch(() => ({}));
+        tables.forEach(table => {
+            const headRow = table.querySelector('thead tr');
+            if (headRow) headRow.append(Object.assign(document.createElement('th'), { textContent: 'Ø Credits' }));
+            const body = table.querySelector('tbody');
+            const rows = Array.from(body ? body.rows : []);
+            rows.forEach(row => {
+                let type = row.dataset.missionType;
+                if (type && row.dataset.overlayIndex) type += `-${row.dataset.overlayIndex}`;
+                if (type && row.dataset.additiveOverlays) type += `/${row.dataset.additiveOverlays}`;
+                const spec = missionSpec(missions, type);
+                row.dataset.lsshelperCredits = spec ? spec.$ : 0;
+                row.insertCell().textContent = spec && spec.$ ? formatNumber(spec.$) : '–';
+            });
+            rows.sort((a, b) => b.dataset.lsshelperCredits - a.dataset.lsshelperCredits).forEach(row => body.append(row));
+            makeSortable(table);
+        });
+    }
+
+    /* ---------------- Redesign: Listen mit Suche, Sortierung und allen Seiten ---------------- */
+
+    // Zahlen im deutschen Format (1.234,5 km, -500 Credits) oder Datum (TT.MM.JJJJ HH:MM) zum Sortieren
+    function sortValue(text) {
+        text = text.trim();
+        const date = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:,?\s+(\d{1,2}):(\d{2}))?/);
+        if (date) return new Date(+(date[3].length === 2 ? `20${date[3]}` : date[3]), date[2] - 1, +date[1], +(date[4] || 0), +(date[5] || 0)).getTime();
+        const number = text.match(/^[−-]?\s*[\d.]+(,\d+)?(?=\s|$|\s*(km|Credits|Coins|%|€))/);
+        if (number) return parseFloat(number[0].replace(/[−\s]/g, m => (m === '−' ? '-' : '')).replace(/\./g, '').replace(',', '.'));
+        return text.toLowerCase();
+    }
+
+    function makeSortable(table) {
+        if (table.dataset.lsshelperSortable) return;
+        table.dataset.lsshelperSortable = '1';
+        const headers = table.tHead ? Array.from(table.tHead.rows[0] ? table.tHead.rows[0].cells : []) : [];
+        let state = { index: -1, dir: 1 };
+        headers.forEach((th, index) => {
+            th.classList.add('lsshelper-rd-sort');
+            th.title = 'Antippen zum Sortieren';
+            th.addEventListener('click', e => {
+                if (e.target.closest('a, input, button')) return;
+                state = { index, dir: state.index === index ? -state.dir : 1 };
+                headers.forEach(h => h.removeAttribute('data-lsshelper-dir'));
+                th.setAttribute('data-lsshelper-dir', state.dir > 0 ? '▲' : '▼');
+                Array.from(table.tBodies).forEach(body => {
+                    const rows = Array.from(body.rows);
+                    const value = row => (row.cells[index] ? sortValue(row.cells[index].textContent) : '');
+                    rows
+                        .map((row, i) => ({ row, i, v: value(row) }))
+                        .sort((a, b) => {
+                            if (typeof a.v !== typeof b.v) return (typeof a.v === 'number' ? -1 : 1) * state.dir;
+                            return (a.v < b.v ? -1 : a.v > b.v ? 1 : a.i - b.i) * state.dir;
+                        })
+                        .forEach(({ row }) => body.append(row));
+                });
+            });
+        });
+    }
+
+    function enhanceList(table, index) {
+        if (table.dataset.lsshelperList) return;
+        const rowCount = Array.from(table.tBodies).reduce((sum, body) => sum + body.rows.length, 0);
+        if (rowCount < 5 || !table.tHead) return;
+        table.dataset.lsshelperList = '1';
+        makeSortable(table);
+        const bar = document.createElement('div');
+        bar.className = 'lsshelper-rd-listbar';
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.placeholder = 'Suchen …';
+        search.className = 'form-control input-sm';
+        const count = document.createElement('span');
+        count.className = 'lsshelper-rd-listcount';
+        const filter = () => {
+            const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+            let shown = 0;
+            let total = 0;
+            Array.from(table.tBodies).forEach(body =>
+                Array.from(body.rows).forEach(row => {
+                    total++;
+                    const hit = words.every(word => row.textContent.toLowerCase().includes(word));
+                    row.style.display = hit ? '' : 'none';
+                    if (hit) shown++;
+                })
+            );
+            count.textContent = words.length ? `${shown} von ${total}` : `${total} Einträge`;
+        };
+        search.addEventListener('input', filter);
+        bar.append(search, count);
+
+        // Mehrseitige Listen: alle Seiten nachladen und anhängen
+        const pagination = document.querySelector('.pagination');
+        const lastItem = pagination && pagination.querySelector('li:nth-last-of-type(2)');
+        const lastPage = lastItem ? parseInt(lastItem.textContent) : 0;
+        const currentPage = parseInt(new URLSearchParams(location.search).get('page') || '1') || 1;
+        if (lastPage > currentPage && index === 0) {
+            const loadAll = document.createElement('a');
+            loadAll.href = '#';
+            loadAll.className = 'btn btn-default btn-sm';
+            loadAll.textContent = `Alle ${lastPage} Seiten laden`;
+            loadAll.addEventListener('click', async e => {
+                e.preventDefault();
+                if (lastPage - currentPage > 25 && !confirm(`${lastPage - currentPage} weitere Seiten laden? Das dauert etwas.`)) return;
+                loadAll.classList.add('disabled');
+                const target = table.tBodies[table.tBodies.length - 1];
+                for (let page = currentPage + 1; page <= lastPage; page++) {
+                    loadAll.textContent = `Lade Seite ${page}/${lastPage} …`;
+                    const url = new URL(location.href);
+                    url.searchParams.set('page', page);
+                    try {
+                        const doc = await fetchDoc(url.pathname + url.search);
+                        const other = gameTables(doc)[gameTables(document).indexOf(table)];
+                        const body = other && other.tBodies[other.tBodies.length - 1];
+                        if (body) Array.from(body.rows).forEach(row => target.append(document.importNode(row, true)));
+                    } catch (err) {
+                        loadAll.textContent = `Fehler auf Seite ${page}: ${err.message}`;
+                        return;
+                    }
+                    await sleep(250);
+                }
+                pagination.style.display = 'none';
+                loadAll.remove();
+                filter();
+            });
+            bar.append(loadAll);
+        }
+        table.before(bar);
+        filter();
+    }
+
+    // Nur Tabellen des Spiels, nicht die des Helfers
+    const gameTables = doc => Array.from(doc.querySelectorAll('table')).filter(table => !/lsshelper/.test(table.className));
+
+    function redesignLists() {
+        if (!managerOn('rdTables')) return;
+        addManagerStyles();
+        gameTables(document).forEach((table, i) => enhanceList(table, i));
+    }
+
+    // Aufgaben: abholbare oben und grün, erledigte/abgeholte ausblendbar
+    function redesignTasks() {
+        if (!managerOn('rdTasks')) return;
+        const panels = Array.from(document.querySelectorAll('.task_panel'));
+        if (!panels.length) return;
+        addManagerStyles();
+        const claimable = panel => !!panel.querySelector('form input[type="submit"]:not([disabled])');
+        panels.filter(claimable).forEach(panel => {
+            panel.classList.add('lsshelper-rd-claim');
+            panel.parentElement.prepend(panel);
+        });
+        const done = panels.filter(panel => {
+            const progress = panel.querySelector('.task_body .progress > .progress-bar + div');
+            const [have, need] = progress ? progress.textContent.split('/').map(v => parseInt(v.replace(/\D/g, '')) || 0) : [0, 1];
+            return !claimable(panel) && need > 0 && have >= need;
+        });
+        if (!done.length) return;
+        const toggle = document.createElement('a');
+        toggle.href = '#';
+        toggle.className = 'btn btn-default btn-sm lsshelper-rd-tasks';
+        let hidden = false;
+        const apply = () => {
+            done.forEach(panel => (panel.style.display = hidden ? 'none' : ''));
+            toggle.textContent = hidden ? `${done.length} erledigte zeigen` : `${done.length} erledigte ausblenden`;
+        };
+        toggle.addEventListener('click', e => {
+            e.preventDefault();
+            hidden = !hidden;
+            apply();
+        });
+        apply();
+        panels[0].parentElement.before(toggle);
+    }
+
+    // Profil: alle Gebäude des Spielers als Liste (das Spiel zeigt sie nur auf der Karte)
+    async function profileBuildings() {
+        const id = (location.pathname.match(/^\/profile\/(\d+)/) || [])[1];
+        if (!managerOn('rdProfile') || !id) return;
+        const anchor = document.getElementById('profile_map') || document.querySelector('.page-header');
+        if (!anchor) return;
+        addManagerStyles();
+        const data = await fetchJson(`/building/buildings_json?user_to_load_id=${id}`).catch(() => null);
+        const buildings = (data && data.buildings) || [];
+        if (!buildings.length) return;
+        const byId = Object.fromEntries(buildings.map(b => [b.id, b]));
+        const centerOf = b => (b.leitstelle_building_id && byId[b.leitstelle_building_id] ? byId[b.leitstelle_building_id].caption : '–');
+        const box = document.createElement('div');
+        box.className = 'lsshelper-rd-profile';
+        box.append(Object.assign(document.createElement('h3'), { textContent: `Gebäude (${buildings.length})` }));
+        const typeSelect = document.createElement('select');
+        typeSelect.className = 'form-control input-sm';
+        typeSelect.add(new Option('Alle Gebäudetypen', ''));
+        const types = Array.from(new Set(buildings.map(b => b.building_type))).sort((a, b) => buildingName(a).localeCompare(buildingName(b)));
+        types.forEach(type => typeSelect.add(new Option(`${buildingName(type)} (${buildings.filter(b => b.building_type === type).length})`, type)));
+        const table = document.createElement('table');
+        table.className = 'table table-striped table-condensed';
+        const head = table.createTHead().insertRow();
+        ['Name', 'Typ', 'Leitstelle'].forEach(text => head.append(Object.assign(document.createElement('th'), { textContent: text })));
+        const body = table.createTBody();
+        buildings
+            .slice()
+            .sort((a, b) => centerOf(a).localeCompare(centerOf(b)) || a.caption.localeCompare(b.caption))
+            .forEach(b => {
+                const row = body.insertRow();
+                row.dataset.type = b.building_type;
+                const link = Object.assign(document.createElement('a'), { href: `/buildings/${b.id}`, className: 'lightbox-open', textContent: b.caption });
+                row.insertCell().append(link);
+                row.insertCell().textContent = buildingName(b.building_type);
+                row.insertCell().textContent = centerOf(b);
+            });
+        typeSelect.addEventListener('change', () => Array.from(body.rows).forEach(row => row.classList.toggle('hidden', !!typeSelect.value && row.dataset.type !== typeSelect.value)));
+        box.append(typeSelect, table);
+        anchor.after(box);
+        enhanceList(table, 1);
+    }
+
     /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
@@ -4019,6 +4466,15 @@
         { name: 'stagingCounter', match: /^\/buildings\/\d+/, run: stagingCounter },
         { name: 'creditsMenu', match: /^\/$/, run: creditsMenu },
         { name: 'dailySummary', match: /^\/credits\/daily\/?$/, run: dailySummary },
+        { name: 'redesignSkin', match: /^\/(vehicles|buildings|credits|coins|toplist|alliances|verband|alliance_|profile|tasks|schoolings|messages|freunde|note|auszeichnungen|level|einsaetze)/, run: redesignSkin },
+        { name: 'transportCounter', match: /^\/$/, run: transportCounter },
+        { name: 'nextTransport', match: /^\/vehicles\/\d+/, run: nextTransport },
+        { name: 'transportTools', match: /^\/vehicles\/\d+\/?$/, run: transportTools },
+        { name: 'vehicleMissions', match: /^\/vehicles\/\d+\/?$/, run: vehicleMissions },
+        { name: 'autoOpenTransport', match: /^\/missions\/\d+/, run: autoOpenTransport },
+        { name: 'redesignLists', match: /^\/(credits|coins\/list|toplist|alliances|verband\/|alliance_logfiles|schoolings|freunde|einsaetze\/?$|profile\/\d+|buildings\/\d+\/personals)/, run: redesignLists },
+        { name: 'redesignTasks', match: /^\/tasks/, run: redesignTasks },
+        { name: 'profileBuildings', match: /^\/profile\/\d+\/?$/, run: profileBuildings },
         { name: 'missionWindowOrder', match: /^\/missions\/\d+/, run: missionWindowOrder },
     ];
 

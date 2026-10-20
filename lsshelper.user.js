@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.22.1
-// @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
+// @version      0.23.0
+// @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie, passt die Fahrzeugbesatzung einer Wache ans Personal an und bietet zuschaltbare Manager-Funktionen (z. B. fürs iPad).
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
-// @updateURL    https://raw.githubusercontent.com/Kiritosky/lsshelper/main/lsshelper.user.js
-// @downloadURL  https://raw.githubusercontent.com/Kiritosky/lsshelper/main/lsshelper.user.js
+// @updateURL    https://github.com/Kiritosky/lsshelper/releases/latest/download/lsshelper.user.js
+// @downloadURL  https://github.com/Kiritosky/lsshelper/releases/latest/download/lsshelper.user.js
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
@@ -39,6 +39,10 @@
         colorVehicles: '#00e5ff',
         minChance: 50,
         hotkey: 'y',
+        // Manager-Funktionen (Ersatz für einige LSS-Manager-Module, z. B. auf dem iPad); alles hängt am Hauptschalter
+        manager: false,
+        touchButtons: true,
+        touchLarge: true,
     };
     const SETTINGS_LABELS = {
         hotkey: 'Taste, die im Einsatzfenster die markierte AAO auswählt (leer = aus)',
@@ -54,7 +58,23 @@
         colorName: 'Farbe Namens-Treffer',
         colorVehicles: 'Farbe Fahrzeug-AAOs',
         minChance: 'Fahrzeuge erst ab dieser Wahrscheinlichkeit (%) markieren und in neue AAOs aufnehmen',
+        manager: 'Manager-Funktionen einschalten (z. B. auf dem iPad, wo der LSS-Manager nicht läuft)',
+        touchButtons: 'Touch-Knöpfe im Einsatzfenster: „AAO wählen“ (wie die Taste) und „Alarmieren & weiter“',
+        touchLarge: 'Größere Knöpfe und Häkchen zum Antippen',
     };
+    // Aufbau der Einstellungsseite. Gruppen mit master hängen an diesem Schalter: ist er aus, wirkt keine ihrer Einstellungen.
+    const SETTINGS_SECTIONS = [
+        { title: 'AAO-Markierung', keys: ['markName', 'markVehicles', 'subtractPresent', 'countForeign', 'showList', 'openTab', 'createButton', 'pulse', 'colorName', 'colorVehicles', 'minChance', 'hotkey'] },
+        { title: 'Dashboard', keys: ['crewButton'] },
+        {
+            title: 'Manager-Funktionen',
+            master: 'manager',
+            note: 'Nachgebaute Funktionen aus dem LSS-Manager. Am PC mit LSS-Manager ausgeschaltet lassen, damit nichts doppelt erscheint.',
+            groups: [{ title: 'Touch / iPad', keys: ['touchButtons', 'touchLarge'] }],
+        },
+    ];
+    // Manager-Funktion aktiv? Nur wenn der Hauptschalter an ist
+    const managerOn = key => settings.manager && !!settings[key];
     const settings = Object.assign({}, DEFAULTS);
     try {
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
@@ -611,6 +631,10 @@
             #lsshelper-dash input[type="number"] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
             .lsshelper-menu-badge { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: #c62828; color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
+            .lsshelper-dash-savebar { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+            #lsshelper-dash label.lsshelper-dash-master { font-weight: 700; }
+            .lsshelper-dash-groups { margin-left: 22px; }
+            .lsshelper-dash-off { opacity: 0.45; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
             #lsshelper-settings input[type="number"] { width: 60px; color: #000; }
@@ -703,9 +727,9 @@
         }
     }
 
-    // Liefert true, wenn die Taste hier etwas auslöst (auch vom Hauptfenster aus aufrufbar)
-    function triggerHotkey() {
-        if (!settings.hotkey) return false;
+    // Liefert true, wenn die Taste hier etwas auslöst (auch vom Hauptfenster aus aufrufbar); der Touch-Knopf geht auch ohne Taste
+    function triggerHotkey(viaTouch) {
+        if (!settings.hotkey && !viaTouch) return false;
         if (!hotkeyReady) return (hotkeyPending = true);
         if (!hotkeyChoices.length) return false;
         pressHotkey();
@@ -2349,23 +2373,48 @@
 
     function renderSettingsTool(ctx) {
         ctx.status('Einstellungen gelten ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');
-        const card = dashCard(ctx.body, 'Einstellungen');
-        const inputs = Object.keys(DEFAULTS).map(key => {
+        // Knöpfe in einer mitlaufenden Leiste, damit man bei langen Listen nicht zurückscrollen muss
+        const bar = dashEl('div', 'lsshelper-dash-savebar');
+        ctx.body.append(bar);
+        const inputs = [];
+        const addRow = (parent, key) => {
             const row = dashEl('label', 'lsshelper-dash-row');
             const input = dashEl('input');
             input.dataset.key = key;
             input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : /^#/.test(DEFAULTS[key]) ? 'color' : 'text';
             if (input.type === 'checkbox') input.checked = settings[key];
             else input.value = settings[key];
-            if (input.type === 'text') {
+            if (key === 'hotkey') {
                 input.maxLength = 1;
                 input.className = 'lsshelper-dash-key';
+            } else if (input.type === 'text') {
+                input.className = 'lsshelper-dash-search';
             }
             row.append(input, dashEl('span', '', SETTINGS_LABELS[key]));
-            card.append(row);
+            parent.append(row);
+            inputs.push(input);
             return input;
+        };
+        SETTINGS_SECTIONS.forEach(section => {
+            const card = dashCard(ctx.body, section.title);
+            if (section.note) card.append(dashEl('div', 'lsshelper-dash-empty', section.note));
+            (section.keys || []).forEach(key => addRow(card, key));
+            if (!section.master) return;
+            const master = addRow(card, section.master);
+            master.parentElement.classList.add('lsshelper-dash-master');
+            const groups = dashEl('div', 'lsshelper-dash-groups');
+            section.groups.forEach(group => {
+                groups.append(dashEl('div', 'lsshelper-dash-station', group.title));
+                group.keys.forEach(key => addRow(groups, key));
+            });
+            card.append(groups);
+            // Ohne Hauptschalter sind die Unterpunkte ohne Wirkung – sichtbar bleiben sie, damit man vorab einstellen kann
+            const dim = () => groups.classList.toggle('lsshelper-dash-off', !master.checked);
+            master.addEventListener('change', dim);
+            dim();
         });
-        card.head.append(
+        bar.append(
+            dashEl('span', 'lsshelper-dash-spacer'),
             dashButton('Standard wiederherstellen', 'lsshelper-btn-quiet', () => {
                 localStorage.removeItem(SETTINGS_KEY);
                 Object.assign(settings, DEFAULTS);
@@ -2373,7 +2422,8 @@
             }),
             dashButton('Speichern', 'lsshelper-btn-primary', () => {
                 inputs.forEach(input => {
-                    settings[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value.toLowerCase();
+                    const key = input.dataset.key;
+                    settings[key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : key === 'hotkey' ? input.value.toLowerCase() : input.value;
                 });
                 localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
                 ctx.status('Gespeichert. Gilt ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');
@@ -2527,6 +2577,70 @@
     }
 
     /* ------------------------------------------------------------------ *
+     * Manager-Funktionen: Nachbau einiger LSS-Manager-Module (Hauptschalter in den Einstellungen)
+     * ------------------------------------------------------------------ */
+
+    const inFrame = window.top !== window;
+
+    function addManagerStyles() {
+        if (document.getElementById('lsshelper-manager-style')) return;
+        const style = document.createElement('style');
+        style.id = 'lsshelper-manager-style';
+        style.textContent = `
+            #lsshelper-touch { position: fixed; right: 10px; bottom: 10px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+            #lsshelper-touch a { display: block; min-width: 128px; padding: 12px 14px; border-radius: 10px; font-size: 15px; font-weight: 700; text-align: center; color: #fff; text-decoration: none; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4); -webkit-tap-highlight-color: transparent; user-select: none; }
+            #lsshelper-touch a:active { transform: scale(0.96); }
+            #lsshelper-touch .lsshelper-touch-aao { background: #6a1b9a; }
+            #lsshelper-touch .lsshelper-touch-next { background: #2e7d32; }
+            #lsshelper-touch .lsshelper-touch-off { opacity: 0.45; }
+            .lsshelper-mgr-pill { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; white-space: nowrap; vertical-align: middle; }
+        `;
+        // Größere Bedienelemente nur in den Fenstern (Einsatz, Fahrzeug, Wache), die Hauptseite bleibt kompakt
+        if (managerOn('touchLarge') && inFrame) {
+            style.textContent += `
+                input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+                .btn-xs { padding: 5px 9px; font-size: 13px; }
+                a.aao, a.vehicle_group { min-height: 30px; line-height: 20px; }
+                #mission_vehicle_driving td, #mission_vehicle_at_mission td, #vehicle_show_table_all td { padding-top: 6px; padding-bottom: 6px; }
+            `;
+        }
+        document.head.append(style);
+    }
+
+    /* ---------------- Touch-Knöpfe im Einsatzfenster ---------------- */
+
+    function touchButtons() {
+        if (!settings.manager) return;
+        addManagerStyles();
+        if (!managerOn('touchButtons') || !document.getElementById('mission-aao-group')) return;
+        const box = document.createElement('div');
+        box.id = 'lsshelper-touch';
+        const button = (text, cls, onTap) => {
+            const btn = document.createElement('a');
+            btn.href = '#';
+            btn.className = cls;
+            btn.textContent = text;
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                onTap(btn);
+            });
+            box.append(btn);
+            return btn;
+        };
+        const aao = button('AAO wählen', 'lsshelper-touch-aao', () => triggerHotkey(true));
+        // Das Spiel hat für „Alarmieren und zum nächsten Einsatz“ je einen Knopf oben und unten – der erste sichtbare reicht
+        button('Alarm & weiter', 'lsshelper-touch-next', () => {
+            const next = Array.from(document.querySelectorAll('.alert_next')).find(el => el.getClientRects().length) || document.getElementById('mission_alarm_btn');
+            if (next) next.click();
+        });
+        // Ohne Markierung ist der AAO-Knopf blass, bleibt aber antippbar (die Markierung kann noch nachkommen)
+        const refresh = () => aao.classList.toggle('lsshelper-touch-off', !hotkeyChoices.length);
+        refresh();
+        setInterval(refresh, 1000);
+        document.body.append(box);
+    }
+
+    /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
 
@@ -2539,6 +2653,9 @@
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
+        // Manager-Funktionen: prüfen selbst, ob Hauptschalter und eigener Schalter an sind
+        { name: 'managerStyles', match: /^\/(vehicles|buildings)\/\d+/, run: () => settings.manager && addManagerStyles() },
+        { name: 'touchButtons', match: /^\/missions\/\d+/, run: touchButtons },
     ];
 
     window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, hotkey: triggerHotkey, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };

@@ -1,0 +1,44 @@
+# Erstellt für jede neue @version im Skript ein GitHub-Release mit lsshelper.user.js als Download.
+# Feste Download-Adresse (auch für Updates): https://github.com/Kiritosky/lsshelper/releases/latest/download/lsshelper.user.js
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [lsshelper.user.js]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version lesen
+        id: version
+        run: |
+          version=$(grep -m1 -oP '^// @version\s+\K\S+' lsshelper.user.js)
+          if [ -z "$version" ]; then echo "Keine @version im Skript gefunden"; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME passt nicht zur Skriptversion $version"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Release anlegen (falls neu)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag gibt es schon – nichts zu tun"; exit 0
+          fi
+          gh release create "$tag" lsshelper.user.js \
+            --target "$GITHUB_SHA" \
+            --title "LSS Helper $VERSION" \
+            --generate-notes \
+            --latest

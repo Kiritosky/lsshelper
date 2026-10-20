@@ -15,7 +15,7 @@
     'use strict';
 
     const DEBUG = false;
-    const CACHE_KEY = 'lsshelper_missions_v6';
+    const CACHE_KEY = 'lsshelper_missions_v7';
     const CACHE_TTL = 24 * 60 * 60 * 1000;
 
     const log = (...args) => DEBUG && console.log('[LSS Helper]', ...args);
@@ -43,6 +43,21 @@
         manager: false,
         touchButtons: true,
         touchLarge: true,
+        mlCredits: true,
+        mlRemaining: true,
+        mlRemainingGreen: true,
+        mlPatients: true,
+        mlHideZero: true,
+        mlPatientTime: true,
+        mlPumpTime: true,
+        mlStar: true,
+        mlCollapse: true,
+        mlSort: true,
+        mlSortWindow: true,
+        mlShare: false,
+        mlShareMin: 0,
+        mlEvents: true,
+        mlEventList: '🇪🇺: 704, 705, 706, 707, 708; ❄️: 53, 428, 581, 665, 677, 787, 788, 789, 793, 794, 795, 831, 861, 861/a, 861/b, 861/ab, 862, 862/a; 🌞: 183, 184, 185, 461, 546, 546/a, 547, 548, 646, 647, 648, 754, 863, 863/a; 🌹: 360, 361, 362, 363, 364, 365, 597, 598, 599, 600, 601, 602, 603, 604, 605, 790, 791, 792, 833, 834, 917, 918, 919, 920; 🌼: 722, 723, 724, 725, 726, 727, 728, 729, 730, 965; 🍂: 672, 673, 674, 675, 676, 677, 678, 679, 680; 🍺: 88, 216, 217, 218, 219, 220, 452, 453, 454, 456, 457, 626, 627, 628, 629, 629/a, 630, 844, 845, 846; 🎃: 111, 112, 113, 114, 115, 116, 116/a, 117, 118, 118/a, 119, 943, 944, 945, 946; 🎅: 52, 54, 55, 56, 129, 130, 202, 203, 582, 583, 583/a, 584, 584/a, 584/b, 584/ab, 585, 585/a, 585/b, 585/ab, 586, 587, 588, 589, 590, 783, 784, 785, 786, 901, 911, 912, 913; 🎈: 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772; 🏅: 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878; 💐: 360, 742, 743, 744, 745, 746, 747, 748, 847, 847/a; 🥅: 371, 372, 373, 374, 375, 376, 641, 642, 849, 850, 850/a, 851, 852; 🥚: 284, 285, 286, 286/a, 286/b, 286/ab, 287, 288, 289, 290, 291, 291/a, 442, 443, 444, 445, 446, 618, 618/a, 618/b, 618/ab, 732, 733, 733/a, 733/b, 733/ab, 734, 735, 735/a, 736, 737, 739, 739/a, 927, 927/a, 928, 928/a, 928/b, 928/c, 928/ab, 928/ac, 928/bc, 928/abc, 929, 929/a, 929/b, 929/ab; 🥸: 710, 711, 712, 713, 714, 715, 716, 717, 718, 719; 🧨: 259, 259-0, 260, 261, 262, 263, 264, 265, 266, 267, 268, 268/a, 269, 270, 326, 591, 695, 695/a, 695/b, 695/ab, 695-0, 695-0/a, 695-0/b, 695-0/ab, 695-1, 695-1/a, 695-1/b, 695-1/ab',
     };
     const SETTINGS_LABELS = {
         hotkey: 'Taste, die im Einsatzfenster die markierte AAO auswählt (leer = aus)',
@@ -61,6 +76,21 @@
         manager: 'Manager-Funktionen einschalten (z. B. auf dem iPad, wo der LSS-Manager nicht läuft)',
         touchButtons: 'Touch-Knöpfe im Einsatzfenster: „AAO wählen“ (wie die Taste) und „Alarmieren & weiter“',
         touchLarge: 'Größere Knöpfe und Häkchen zum Antippen',
+        mlCredits: 'Ø Credits am Einsatz anzeigen',
+        mlRemaining: 'Verbleibende Einsatzdauer anzeigen',
+        mlRemainingGreen: '… nur bei grünen Einsätzen (alles Nötige vor Ort)',
+        mlPatients: 'Zahl der Patienten und Gefangenen am Einsatz anzeigen',
+        mlHideZero: '… 0 ausblenden',
+        mlPatientTime: 'Restbehandlungsdauer der Patienten anzeigen',
+        mlPumpTime: 'Restdauer beim Abpumpen anzeigen',
+        mlStar: 'Einsätze mit Stern markieren (bleiben oben in der Liste)',
+        mlCollapse: 'Einsätze einklappen (einzeln und alle auf einmal)',
+        mlSort: 'Einsatzliste sortieren (Auswahl über der Liste)',
+        mlSortWindow: 'Vor-/Zurück-Knöpfe im Einsatzfenster folgen der Sortierung',
+        mlShare: 'Knopf zum Teilen im Verband an eigenen Einsätzen',
+        mlShareMin: '… nur bei Einsätzen ab so vielen Ø Credits',
+        mlEvents: 'Saison-Symbole vor dem Einsatznamen',
+        mlEventList: 'Saison-Symbole: „Symbol: Einsatz-IDs; …“',
     };
     // Aufbau der Einstellungsseite. Gruppen mit master hängen an diesem Schalter: ist er aus, wirkt keine ihrer Einstellungen.
     const SETTINGS_SECTIONS = [
@@ -70,7 +100,10 @@
             title: 'Manager-Funktionen',
             master: 'manager',
             note: 'Nachgebaute Funktionen aus dem LSS-Manager. Am PC mit LSS-Manager ausgeschaltet lassen, damit nichts doppelt erscheint.',
-            groups: [{ title: 'Touch / iPad', keys: ['touchButtons', 'touchLarge'] }],
+            groups: [
+                { title: 'Touch / iPad', keys: ['touchButtons', 'touchLarge'] },
+                { title: 'Einsatzliste', keys: ['mlCredits', 'mlRemaining', 'mlRemainingGreen', 'mlPatients', 'mlHideZero', 'mlPatientTime', 'mlPumpTime', 'mlStar', 'mlCollapse', 'mlSort', 'mlSortWindow', 'mlShare', 'mlShareMin', 'mlEvents', 'mlEventList'] },
+            ],
         },
     ];
     // Manager-Funktion aktiv? Nur wenn der Hauptschalter an ist
@@ -126,6 +159,8 @@
                 // Wahrscheinlichkeiten (%) für Anforderungen, die nicht bei jedem Einsatz gebraucht werden
                 h: Object.fromEntries(Object.entries(c).filter(([key]) => e.requirements && key in e.requirements)),
                 x: a.only_alliance_mission || a.unavailable_in_normal_missions || a.subsequent_mission_only || a.date_start ? 1 : 0,
+                // Durchschnittliche Credits (Manager-Funktionen: Einsatzliste, Sortierung, Teilen)
+                $: e.average_credits || 0,
             };
         });
         try {
@@ -635,6 +670,8 @@
             #lsshelper-dash label.lsshelper-dash-master { font-weight: 700; }
             .lsshelper-dash-groups { margin-left: 22px; }
             .lsshelper-dash-off { opacity: 0.45; }
+            #lsshelper-dash label.lsshelper-dash-row:has(textarea) { flex-direction: column-reverse; align-items: stretch; }
+            #lsshelper-dash textarea.lsshelper-dash-text { width: 100%; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
             #lsshelper-settings input[type="number"] { width: 60px; color: #000; }
@@ -2379,9 +2416,14 @@
         const inputs = [];
         const addRow = (parent, key) => {
             const row = dashEl('label', 'lsshelper-dash-row');
-            const input = dashEl('input');
+            // Lange Texte (z. B. Listen) als mehrzeiliges Feld
+            const long = typeof DEFAULTS[key] === 'string' && DEFAULTS[key].length > 40;
+            const input = dashEl(long ? 'textarea' : 'input');
             input.dataset.key = key;
-            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : /^#/.test(DEFAULTS[key]) ? 'color' : 'text';
+            if (long) {
+                input.rows = 3;
+                input.className = 'lsshelper-dash-text';
+            } else input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : /^#/.test(DEFAULTS[key]) ? 'color' : 'text';
             if (input.type === 'checkbox') input.checked = settings[key];
             else input.value = settings[key];
             if (key === 'hotkey') {
@@ -2593,6 +2635,14 @@
             #lsshelper-touch .lsshelper-touch-aao { background: #6a1b9a; }
             #lsshelper-touch .lsshelper-touch-next { background: #2e7d32; }
             #lsshelper-touch .lsshelper-touch-off { opacity: 0.45; }
+            #missions-panel-body.lsshelper-ml-flex > [id^="mission_list"]:not([style*="display: none"]) { display: flex !important; flex-direction: column; }
+            .lsshelper-ml-info { margin-left: 2px; }
+            .lsshelper-ml-btns { display: inline-flex; margin-right: 3px; }
+            .lsshelper-ml-event { margin-right: 4px; white-space: nowrap; }
+            .lsshelper-collapsed .panel-body > *:not(:has([id^="mission_bar_outer_"], [id^="mission_overview_countdown_"])):not([id^="mission_bar_outer_"]):not([id^="mission_overview_countdown_"]) { display: none !important; }
+            .lsshelper-ml-tools { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
+            .lsshelper-ml-sort { height: 22px; max-width: 170px; padding: 0 2px; font-size: 12px; color: #000; }
+            .lsshelper-ml-time { display: inline-block; margin-right: 4px; font-size: 11px; }
             .lsshelper-mgr-pill { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; white-space: nowrap; vertical-align: middle; }
         `;
         // Größere Bedienelemente nur in den Fenstern (Einsatz, Fahrzeug, Wache), die Hauptseite bleibt kompakt
@@ -2640,6 +2690,431 @@
         document.body.append(box);
     }
 
+    /* ---------------- Gemeinsame Helfer ---------------- */
+
+    // Spielfunktion umhüllen: erst läuft das Spiel, danach unser Rückruf. Ein Fehler bei uns darf das Spiel nie stören.
+    function hookGame(name, after) {
+        const original = window[name];
+        if (typeof original !== 'function') return false;
+        window[name] = function (...args) {
+            const result = original.apply(this, args);
+            try {
+                after(...args);
+            } catch (e) {
+                console.error(`[LSS Helper] ${name}`, e);
+            }
+            return result;
+        };
+        return true;
+    }
+
+    const readJson = (key, fallback) => {
+        try {
+            return JSON.parse(localStorage.getItem(key) || 'null') || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    };
+    const writeJson = (key, value) => {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+            log('Speichern fehlgeschlagen', key, e);
+        }
+    };
+
+    const formatNumber = n => Math.round(n).toLocaleString('de-DE');
+    // Sekunden als 1:05:09 bzw. 5:09 (wie die Countdowns des Spiels)
+    function formatSeconds(seconds) {
+        seconds = Math.max(0, Math.floor(seconds));
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = String(seconds % 60).padStart(2, '0');
+        return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+    }
+
+    /* ---------------- Einsatzliste (Hauptfenster) ---------------- */
+
+    const ML_STAR_KEY = 'lsshelper_ml_starred';
+    const ML_COLLAPSE_KEY = 'lsshelper_ml_collapsed';
+    const ML_SORT_KEY = 'lsshelper_ml_sort';
+
+    const missionPanels = () => Array.from(document.querySelectorAll('#missions-panel-body .missionSideBarEntry'));
+    const panelId = panel => panel.getAttribute('mission_id') || panel.id.replace(/^mission_/, '');
+
+    // Einsatztyp-Schlüssel wie in einsaetze.json: Typ, "-Overlay", "/Zusatz-Overlays"
+    function panelMissionType(panel) {
+        let type = panel.getAttribute('mission_type_id');
+        if (!type || type === '-1' || type === 'null') return null;
+        const overlay = panel.getAttribute('data-overlay-index');
+        if (overlay && overlay !== 'null') type += `-${overlay}`;
+        const additive = panel.getAttribute('data-additive-overlays');
+        if (additive && additive !== 'null') type += `/${additive}`;
+        return type;
+    }
+
+    const missionSpec = (missions, type) => (type && missions ? missions[type] || missions[type.split(/[-/]/)[0]] : null);
+
+    // Patienten bzw. Gefangene, die gerade am Einsatz sind (liest die Einsatzliste des Spiels)
+    function panelPatients(panel) {
+        if (panel.querySelector('[id^="mission_patients_"] [id^="patient_"]')) return panel.querySelectorAll('.patient_progress').length;
+        const summary = panel.querySelector('[id^="mission_patient_summary_"]');
+        if (summary && summary.style.display !== 'none') {
+            const strong = panel.querySelector('.mission_list_patient_icon + strong');
+            return strong ? parseInt(strong.textContent.replace(/\D/g, '')) || 0 : 0;
+        }
+        return 0;
+    }
+    const panelPrisoners = panel => panel.querySelectorAll('.mission_prisoners[id^="mission_prisoners_"] .small[id^="prisoner_"]').length;
+
+    const ML_SORTS = {
+        default: { label: 'Sortierung: Spiel' },
+        newest: { label: 'Neueste zuerst', key: p => -parseInt(panelId(p)) },
+        oldest: { label: 'Älteste zuerst', key: p => parseInt(panelId(p)) },
+        credits: { label: 'Meiste Credits zuerst', key: (p, info) => -(info.credits(p) || 0) },
+        creditsAsc: { label: 'Wenigste Credits zuerst', key: (p, info) => info.credits(p) || 0 },
+        patients: { label: 'Meiste Patienten zuerst', key: p => -panelPatients(p) },
+        state: { label: 'Rot → Gelb → Grün', key: (p, info) => info.state(p) },
+        name: { label: 'Name A–Z', key: p => (p.querySelector('[id^="mission_caption_"]') || p).textContent.trim().toLowerCase() },
+    };
+
+    // Saison-Symbole aus der Einstellung „Symbol: 1, 2/a; Symbol: 3“ lesen
+    function parseEventList(text) {
+        const byType = {};
+        String(text || '')
+            .split(';')
+            .forEach(part => {
+                const [symbol, ids] = part.split(':');
+                if (!symbol || !ids || !symbol.trim()) return;
+                ids.split(',').forEach(id => {
+                    id = id.trim();
+                    if (!id) return;
+                    (byType[id] = byType[id] || []).push(symbol.trim());
+                });
+            });
+        return byType;
+    }
+
+    async function missionList() {
+        if (!settings.manager || inFrame) return;
+        const body = document.getElementById('missions-panel-body');
+        if (!body) return;
+        addManagerStyles();
+        const missions = await getMissions().catch(() => ({}));
+
+        // Was das Spiel beim Aktualisieren eines Einsatzes mitliefert: Credits (auch für Einsätze ohne Typ) und Status
+        const creditsById = {};
+        const stateById = {};
+        const info = {
+            credits: panel => {
+                const id = panelId(panel);
+                if (creditsById[id] !== undefined) return creditsById[id];
+                const spec = missionSpec(missions, panelMissionType(panel));
+                return spec ? spec.$ : null;
+            },
+            // 0 = rot, 1 = gelb, 2 = grün; unbekannt zählt als gelb
+            state: panel => (stateById[panelId(panel)] !== undefined ? stateById[panelId(panel)] : 1),
+        };
+
+        const starred = new Set(readJson(ML_STAR_KEY, []).map(String));
+        const collapsed = readJson(ML_COLLAPSE_KEY, { all: false, ids: [] });
+        const collapsedIds = new Set(collapsed.ids.map(String));
+        // Gespeicherte Einsätze, die es nicht mehr gibt, vergessen
+        const present = new Set(missionPanels().map(panelId));
+        if (present.size) [starred, collapsedIds].forEach(set => set.forEach(id => !present.has(id) && set.delete(id)));
+        const saveStars = () => writeJson(ML_STAR_KEY, Array.from(starred));
+        const saveCollapsed = () => writeJson(ML_COLLAPSE_KEY, { all: collapsed.all, ids: Array.from(collapsedIds) });
+        saveStars();
+        saveCollapsed();
+        let sortType = readJson(ML_SORT_KEY, 'default');
+        if (!ML_SORTS[sortType]) sortType = 'default';
+        const events = managerOn('mlEvents') ? parseEventList(settings.mlEventList) : {};
+
+        // Reihenfolge über CSS (order) statt Umhängen im DOM, damit das Spiel seine Liste weiter selbst pflegen kann
+        const ordering = managerOn('mlStar') || managerOn('mlSort');
+        if (ordering) body.classList.add('lsshelper-ml-flex');
+        let orderTimer = 0;
+        const applyOrder = () => {
+            orderTimer = 0;
+            const sort = managerOn('mlSort') ? ML_SORTS[sortType] : ML_SORTS.default;
+            body.querySelectorAll(':scope > [id^="mission_list"]').forEach(list => {
+                const panels = Array.from(list.children).filter(el => el.classList.contains('missionSideBarEntry'));
+                const ranked = panels.map((panel, index) => ({ panel, index, key: sort.key ? sort.key(panel, info) : 0 }));
+                ranked.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.index - b.index));
+                ranked.forEach(({ panel }, rank) => {
+                    panel.style.order = String((starred.has(panelId(panel)) ? -100000 : 0) + rank);
+                });
+            });
+            if (typeof window.missionScrollUpdate === 'function') window.missionScrollUpdate();
+        };
+        const queueOrder = () => {
+            if (ordering && !orderTimer) orderTimer = setTimeout(applyOrder, 150);
+        };
+
+        let searchTimer = 0;
+        const button = (cls, title, onClick) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `btn btn-xs ${cls}`;
+            btn.title = title;
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClick(btn);
+            });
+            return btn;
+        };
+        const icon = (btn, glyph) => {
+            btn.textContent = '';
+            const span = document.createElement('span');
+            span.className = `glyphicon glyphicon-${glyph}`;
+            btn.append(span);
+        };
+        const styleStar = (btn, on) => {
+            btn.className = `btn btn-xs ${on ? 'btn-warning' : 'btn-default'} lsshelper-ml-star`;
+            icon(btn, on ? 'star' : 'star-empty');
+        };
+        const styleCollapse = (btn, on) => icon(btn, on ? 'chevron-down' : 'chevron-up');
+        const setCollapsed = (panel, on) => {
+            panel.classList.toggle('lsshelper-collapsed', on);
+            const btn = panel.querySelector('.lsshelper-ml-collapse');
+            if (btn) styleCollapse(btn, on);
+        };
+
+        // Fügt unsere Elemente an einen Einsatz an bzw. aktualisiert sie; das Spiel baut Teile davon bei Änderungen neu
+        const decorate = (panel, marker, patientCount) => {
+            const id = panelId(panel);
+            const isNew = !present.has(id);
+            present.add(id);
+            if (marker) {
+                if (typeof marker.average_credits === 'number') creditsById[id] = marker.average_credits;
+                if (typeof marker.vehicle_state === 'number') stateById[id] = marker.vehicle_state;
+            }
+            const heading = panel.querySelector('.panel-heading');
+            const caption = panel.querySelector('[id^="mission_caption_"]');
+            if (!heading) return;
+
+            let bar = heading.querySelector(':scope > .lsshelper-ml-info');
+            if (!bar) {
+                bar = document.createElement('span');
+                bar.className = 'lsshelper-ml-info';
+                heading.append(bar);
+            }
+            const pills = [];
+            if (managerOn('mlCredits')) {
+                const credits = info.credits(panel);
+                pills.push(['credits', credits === null ? '' : `≈ ${formatNumber(credits)} Cr`]);
+            }
+            if (managerOn('mlPatients')) {
+                const patients = patientCount !== undefined ? patientCount : panelPatients(panel);
+                const prisoners = panelPrisoners(panel);
+                pills.push(['patients', patients || !settings.mlHideZero ? `🤕 ${patients}` : '']);
+                pills.push(['prisoners', prisoners ? `🔗 ${prisoners}` : '']);
+            }
+            pills.forEach(([kind, text]) => {
+                let pill = bar.querySelector(`.lsshelper-ml-${kind}`);
+                if (!pill) {
+                    pill = document.createElement('span');
+                    pill.className = `lsshelper-mgr-pill lsshelper-ml-${kind}`;
+                    bar.append(pill);
+                }
+                pill.textContent = text;
+                pill.style.display = text ? '' : 'none';
+            });
+
+            // Saison-Symbol vor dem Namen, auch für die Suche des Spiels
+            const symbols = events[panelMissionType(panel)];
+            if (symbols && caption && !panel.querySelector('.lsshelper-ml-event')) {
+                const prefix = `[${symbols.join(' ')}]`;
+                const span = document.createElement('span');
+                span.className = 'lsshelper-ml-event';
+                span.textContent = prefix;
+                caption.before(span);
+                const search = panel.getAttribute('search_attribute') || '';
+                if (!search.includes(prefix)) {
+                    panel.setAttribute('search_attribute', `${search} ${prefix}`);
+                    if (!searchTimer && typeof window.searchMission === 'function') searchTimer = setTimeout(() => ((searchTimer = 0), window.searchMission()), 0);
+                }
+            }
+
+            // Knöpfe vor dem Alarm-Knopf
+            const alarm = panel.querySelector('a[id^="alarm_button_"]');
+            let group = panel.querySelector('.lsshelper-ml-btns');
+            if (alarm && !group) {
+                group = document.createElement('span');
+                group.className = 'btn-group lsshelper-ml-btns';
+                alarm.before(group);
+            }
+            if (!group) return;
+            if (managerOn('mlStar') && !group.querySelector('.lsshelper-ml-star')) {
+                const star = button('', 'Einsatz oben halten', btn => {
+                    if (starred.has(id)) starred.delete(id);
+                    else starred.add(id);
+                    styleStar(btn, starred.has(id));
+                    saveStars();
+                    queueOrder();
+                });
+                styleStar(star, starred.has(id));
+                group.append(star);
+            }
+            if (managerOn('mlCollapse') && !group.querySelector('.lsshelper-ml-collapse')) {
+                const toggle = button('btn-default lsshelper-ml-collapse', 'Einsatz ein-/ausklappen', () => {
+                    const on = !panel.classList.contains('lsshelper-collapsed');
+                    if (on) collapsedIds.add(id);
+                    else collapsedIds.delete(id);
+                    setCollapsed(panel, on);
+                    saveCollapsed();
+                });
+                group.append(toggle);
+                // Neue Einsätze kommen eingeklappt, wenn zuletzt „alle einklappen“ gewählt war
+                if (isNew && collapsed.all) collapsedIds.add(id);
+                setCollapsed(panel, collapsedIds.has(id));
+            }
+            if (managerOn('mlShare')) {
+                const shared = !!panel.querySelector('.panel-success');
+                const own = !!panel.closest('#mission_list, #mission_list_sicherheitswache');
+                const credits = info.credits(panel) || 0;
+                const existing = group.querySelector('.lsshelper-ml-share');
+                if (shared && existing) existing.remove();
+                if (!shared && own && !existing && credits >= settings.mlShareMin) {
+                    const share = button('btn-success lsshelper-ml-share', 'Im Verband freigeben', async btn => {
+                        btn.disabled = true;
+                        try {
+                            const response = await fetch(`/missions/${id}/alliance`, { credentials: 'same-origin' });
+                            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                            btn.remove();
+                        } catch (e) {
+                            btn.disabled = false;
+                            btn.title = `Teilen fehlgeschlagen: ${e.message}`;
+                        }
+                    });
+                    icon(share, 'share-alt');
+                    group.append(share);
+                }
+            }
+        };
+
+        missionPanels().forEach(panel => decorate(panel));
+        if (ordering) applyOrder();
+
+        const byMarker = (missionId, marker, patients) => {
+            const panel = document.getElementById(`mission_${missionId}`);
+            if (panel) decorate(panel, marker, patients);
+            queueOrder();
+        };
+        hookGame('missionMarkerAdd', marker => marker && byMarker(marker.id, marker));
+        hookGame('missionDelete', queueOrder);
+        if (managerOn('mlPatients') || ordering) {
+            hookGame('patientMarkerAdd', marker => marker && byMarker(marker.mission_id));
+            hookGame('patientMarkerAddCombined', marker => marker && byMarker(marker.mission_id, null, marker.count));
+            hookGame('patientDelete', () => missionPanels().forEach(panel => decorate(panel)));
+        }
+
+        // Verbleibende Einsatzdauer: das Spiel rechnet sekündlich das Ende aus, wir zeigen es im Countdown-Feld an
+        if (managerOn('mlRemaining')) {
+            hookGame('missionTimer', mission => {
+                if (!mission || !mission.date_end_calc || (settings.mlRemainingGreen && mission.vehicle_state !== 2)) return;
+                const el = document.getElementById(`mission_overview_countdown_${mission.id}`);
+                const now = typeof window.unix_timestamp === 'function' ? window.unix_timestamp() : Date.now() / 1000;
+                const left = Math.floor(mission.date_end_calc - now);
+                if (el && left >= 0) el.textContent = typeof window.formatTime === 'function' ? window.formatTime(left, false) : formatSeconds(left);
+            });
+        }
+
+        // Restzeiten unter Patienten- und Abpump-Balken, einmal pro Sekunde
+        const pumping = new Map();
+        if (managerOn('mlPumpTime')) {
+            hookGame('startProgressBar', params => {
+                const bar = params && params.$element && params.$element[0];
+                if (bar && params.endTime) pumping.set(bar, params.endTime);
+            });
+        }
+        const timeLabel = barOuter => {
+            let label = barOuter.parentElement && barOuter.parentElement.querySelector(':scope > .lsshelper-ml-time');
+            if (!label) {
+                label = document.createElement('div');
+                label.className = 'mission_overview_countdown lsshelper-ml-time';
+                barOuter.before(label);
+            }
+            return label;
+        };
+        if (managerOn('mlPatientTime') || managerOn('mlPumpTime')) {
+            setInterval(() => {
+                if (managerOn('mlPatientTime') && Array.isArray(window.patient_timers)) {
+                    window.patient_timers.forEach(patient => {
+                        const bar = document.getElementById(`patient_bar_${patient.patient_id}`);
+                        if (!bar || !bar.parentElement || !patient.params || patient.params.target_percent) return;
+                        timeLabel(bar.parentElement).textContent = formatSeconds((patient.miliseconds_by_percent / 1000) * patient.params.live_current_value);
+                    });
+                }
+                pumping.forEach((endTime, bar) => {
+                    if (!bar.isConnected || !bar.parentElement) return pumping.delete(bar);
+                    timeLabel(bar.parentElement).textContent = formatSeconds(endTime / 1000 - Date.now() / 1000);
+                });
+            }, 1000);
+        }
+
+        // Bedienleiste über der Liste: Sortierung und „alle ein-/ausklappen“
+        const selections = document.querySelectorAll('.missions-panel-main .mission_selection');
+        const anchor = selections[selections.length - 1];
+        if (anchor && (managerOn('mlSort') || managerOn('mlCollapse'))) {
+            const tools = document.createElement('span');
+            tools.className = 'lsshelper-ml-tools';
+            if (managerOn('mlSort')) {
+                const select = document.createElement('select');
+                select.className = 'lsshelper-ml-sort';
+                Object.entries(ML_SORTS).forEach(([key, sort]) => select.add(new Option(sort.label, key, false, key === sortType)));
+                select.addEventListener('change', () => {
+                    sortType = select.value;
+                    writeJson(ML_SORT_KEY, sortType);
+                    applyOrder();
+                });
+                tools.append(select);
+            }
+            if (managerOn('mlCollapse')) {
+                const all = button('btn-default', 'Alle Einsätze ein-/ausklappen', () => {
+                    const panels = missionPanels();
+                    collapsed.all = panels.some(panel => !panel.classList.contains('lsshelper-collapsed'));
+                    panels.forEach(panel => {
+                        const id = panelId(panel);
+                        if (collapsed.all) collapsedIds.add(id);
+                        else collapsedIds.delete(id);
+                        setCollapsed(panel, collapsed.all);
+                    });
+                    saveCollapsed();
+                });
+                icon(all, 'resize-vertical');
+                tools.append(all);
+            }
+            anchor.after(tools);
+        }
+    }
+
+    // Einsatzfenster: Vor/Zurück in der Reihenfolge, die die Einsatzliste im Hauptfenster gerade zeigt
+    function missionWindowOrder() {
+        if (!managerOn('mlSortWindow') || !(managerOn('mlSort') || managerOn('mlStar')) || !inFrame) return;
+        let top;
+        try {
+            top = window.top.document;
+        } catch (e) {
+            return;
+        }
+        const id = (location.pathname.match(/^\/missions\/(\d+)/) || [])[1];
+        const current = top.getElementById(`mission_${id}`);
+        if (!current || !current.parentElement || !top.getElementById('missions-panel-body').classList.contains('lsshelper-ml-flex')) return;
+        const visible = Array.from(current.parentElement.children).filter(el => el.classList.contains('missionSideBarEntry') && !el.classList.contains('mission_deleted') && el.style.display !== 'none');
+        const ordered = visible.map((el, index) => ({ el, index, order: parseInt(el.style.order) || 0 })).sort((a, b) => a.order - b.order || a.index - b.index).map(item => item.el);
+        const position = ordered.indexOf(current);
+        if (position < 0) return;
+        const link = (selector, neighbour) => {
+            document.querySelectorAll(selector).forEach(btn => {
+                if (neighbour) btn.setAttribute('href', `/missions/${panelId(neighbour)}`);
+            });
+        };
+        link('#mission_previous_mission_btn', ordered[position - 1]);
+        link('#mission_next_mission_btn', ordered[position + 1]);
+    }
+
     /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
@@ -2656,6 +3131,8 @@
         // Manager-Funktionen: prüfen selbst, ob Hauptschalter und eigener Schalter an sind
         { name: 'managerStyles', match: /^\/(vehicles|buildings)\/\d+/, run: () => settings.manager && addManagerStyles() },
         { name: 'touchButtons', match: /^\/missions\/\d+/, run: touchButtons },
+        { name: 'missionList', match: /^\/$/, run: missionList },
+        { name: 'missionWindowOrder', match: /^\/missions\/\d+/, run: missionWindowOrder },
     ];
 
     window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, hotkey: triggerHotkey, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };

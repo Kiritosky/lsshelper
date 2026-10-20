@@ -57,6 +57,22 @@
         mlShare: false,
         mlShareMin: 0,
         mlEvents: true,
+        mwCredits: true,
+        mwGenerated: true,
+        mwGeneratedYellow: 12,
+        mwExpireRed: true,
+        mwPatientSummary: true,
+        mwCollapsePatients: 8,
+        mwPatientTime: true,
+        mwCounters: true,
+        mwStickyHeader: true,
+        mwLoadInHeader: true,
+        mwHideVehicleList: false,
+        mwCenterMap: true,
+        mwVehicleType: true,
+        mwAlarmTime: true,
+        mwReset: true,
+        mwStagingCounter: true,
         mlEventList: '🇪🇺: 704, 705, 706, 707, 708; ❄️: 53, 428, 581, 665, 677, 787, 788, 789, 793, 794, 795, 831, 861, 861/a, 861/b, 861/ab, 862, 862/a; 🌞: 183, 184, 185, 461, 546, 546/a, 547, 548, 646, 647, 648, 754, 863, 863/a; 🌹: 360, 361, 362, 363, 364, 365, 597, 598, 599, 600, 601, 602, 603, 604, 605, 790, 791, 792, 833, 834, 917, 918, 919, 920; 🌼: 722, 723, 724, 725, 726, 727, 728, 729, 730, 965; 🍂: 672, 673, 674, 675, 676, 677, 678, 679, 680; 🍺: 88, 216, 217, 218, 219, 220, 452, 453, 454, 456, 457, 626, 627, 628, 629, 629/a, 630, 844, 845, 846; 🎃: 111, 112, 113, 114, 115, 116, 116/a, 117, 118, 118/a, 119, 943, 944, 945, 946; 🎅: 52, 54, 55, 56, 129, 130, 202, 203, 582, 583, 583/a, 584, 584/a, 584/b, 584/ab, 585, 585/a, 585/b, 585/ab, 586, 587, 588, 589, 590, 783, 784, 785, 786, 901, 911, 912, 913; 🎈: 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769, 770, 771, 772; 🏅: 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878; 💐: 360, 742, 743, 744, 745, 746, 747, 748, 847, 847/a; 🥅: 371, 372, 373, 374, 375, 376, 641, 642, 849, 850, 850/a, 851, 852; 🥚: 284, 285, 286, 286/a, 286/b, 286/ab, 287, 288, 289, 290, 291, 291/a, 442, 443, 444, 445, 446, 618, 618/a, 618/b, 618/ab, 732, 733, 733/a, 733/b, 733/ab, 734, 735, 735/a, 736, 737, 739, 739/a, 927, 927/a, 928, 928/a, 928/b, 928/c, 928/ab, 928/ac, 928/bc, 928/abc, 929, 929/a, 929/b, 929/ab; 🥸: 710, 711, 712, 713, 714, 715, 716, 717, 718, 719; 🧨: 259, 259-0, 260, 261, 262, 263, 264, 265, 266, 267, 268, 268/a, 269, 270, 326, 591, 695, 695/a, 695/b, 695/ab, 695-0, 695-0/a, 695-0/b, 695-0/ab, 695-1, 695-1/a, 695-1/b, 695-1/ab',
     };
     const SETTINGS_LABELS = {
@@ -91,6 +107,22 @@
         mlShareMin: '… nur bei Einsätzen ab so vielen Ø Credits',
         mlEvents: 'Saison-Symbole vor dem Einsatznamen',
         mlEventList: 'Saison-Symbole: „Symbol: Einsatz-IDs; …“',
+        mwCredits: 'Ø Credits neben dem Einsatznamen',
+        mwGenerated: 'Generierungszeitpunkt neben der Adresse',
+        mwGeneratedYellow: '… gelb umranden ab so vielen Stunden (0 = aus)',
+        mwExpireRed: '… rot umranden, wenn der Einsatz in der nächsten Nacht verfällt',
+        mwPatientSummary: 'Patienten-Zusammenfassung: was an Rettungsmitteln noch fehlt',
+        mwCollapsePatients: 'Patienten einklappen ab so vielen Patienten (0 = nie)',
+        mwPatientTime: 'Restbehandlungsdauer an den Patienten',
+        mwCounters: 'Fahrzeug- und Spielerzähler (Anfahrt | vor Ort | gesamt, antippen für Details)',
+        mwStickyHeader: 'Kopfleiste beim Scrollen festhalten',
+        mwLoadInHeader: '„Fehlende Fahrzeuge laden“ zusätzlich in der Kopfleiste',
+        mwHideVehicleList: 'Fahrzeugliste zuklappbar machen (startet zugeklappt)',
+        mwCenterMap: 'Symbol zum Zentrieren der Karte auf den Einsatz',
+        mwVehicleType: 'Fahrzeugtyp in der Fahrzeugauswahl anzeigen',
+        mwAlarmTime: 'Längste Anfahrtszeit der ausgewählten Fahrzeuge am Alarmieren-Knopf',
+        mwReset: 'Knopf „Auswahl zurücksetzen“ (hebt alle Häkchen auf)',
+        mwStagingCounter: 'Zähler der ausgewählten Fahrzeuge im Bereitstellungsraum',
     };
     // Aufbau der Einstellungsseite. Gruppen mit master hängen an diesem Schalter: ist er aus, wirkt keine ihrer Einstellungen.
     const SETTINGS_SECTIONS = [
@@ -102,6 +134,10 @@
             note: 'Nachgebaute Funktionen aus dem LSS-Manager. Am PC mit LSS-Manager ausgeschaltet lassen, damit nichts doppelt erscheint.',
             groups: [
                 { title: 'Touch / iPad', keys: ['touchButtons', 'touchLarge'] },
+                {
+                    title: 'Einsatzfenster',
+                    keys: ['mwCredits', 'mwGenerated', 'mwGeneratedYellow', 'mwExpireRed', 'mwPatientSummary', 'mwCollapsePatients', 'mwPatientTime', 'mwCounters', 'mwStickyHeader', 'mwLoadInHeader', 'mwHideVehicleList', 'mwCenterMap', 'mwVehicleType', 'mwAlarmTime', 'mwReset', 'mwStagingCounter'],
+                },
                 { title: 'Einsatzliste', keys: ['mlCredits', 'mlRemaining', 'mlRemainingGreen', 'mlPatients', 'mlHideZero', 'mlPatientTime', 'mlPumpTime', 'mlStar', 'mlCollapse', 'mlSort', 'mlSortWindow', 'mlShare', 'mlShareMin', 'mlEvents', 'mlEventList'] },
             ],
         },
@@ -2643,6 +2679,21 @@
             .lsshelper-ml-tools { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
             .lsshelper-ml-sort { height: 22px; max-width: 170px; padding: 0 2px; font-size: 12px; color: #000; }
             .lsshelper-ml-time { display: inline-block; margin-right: 4px; font-size: 11px; }
+            .lsshelper-mw-generated { padding: 0 3px; border-radius: 3px; white-space: nowrap; }
+            .lsshelper-mw-yellow { border: 1px solid #e0b000; }
+            .lsshelper-mw-red { border: 2px solid #d32f2f; }
+            .lsshelper-mw-center { margin-right: 6px; text-decoration: none !important; cursor: pointer; }
+            .lsshelper-mw-credits { font-size: 12px; vertical-align: middle; }
+            .lsshelper-mw-sticky { position: sticky; top: 0; z-index: 3; }
+            .lsshelper-mw-load { margin-left: 8px; }
+            .lsshelper-mw-patients { margin: 4px 0; padding: 4px 8px; border: 1px solid rgba(128, 128, 128, 0.5); border-radius: 4px; }
+            .lsshelper-mw-counter { position: relative; margin-left: 6px; }
+            .lsshelper-mw-counter .label { cursor: pointer; }
+            .lsshelper-mw-counter-table { position: absolute; right: 0; z-index: 5; width: auto; min-width: 240px; max-height: 60vh; overflow: auto; display: block; background: #fff; color: #333; border: 1px solid #999; border-radius: 4px; text-transform: none; font-weight: normal; }
+            .lsshelper-mw-counter-table[hidden] { display: none; }
+            body.dark .lsshelper-mw-counter-table { background: #222; color: #eee; }
+            .lsshelper-mw-reset, .lsshelper-mw-hide { margin-right: 4px; }
+            .lsshelper-mw-alarmtime { margin-left: 4px; }
             .lsshelper-mgr-pill { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; white-space: nowrap; vertical-align: middle; }
         `;
         // Größere Bedienelemente nur in den Fenstern (Einsatz, Fahrzeug, Wache), die Hauptseite bleibt kompakt
@@ -3090,6 +3141,307 @@
         }
     }
 
+    /* ---------------- Einsatzfenster ---------------- */
+
+    // Einmal-Anforderungen: egal wie viele Patienten sie nennen, gebraucht wird nur eins
+    const ONCE_PER_MISSION = ['LNA', 'OrgL', 'KdoW-LNA', 'KdoW-OrgL', 'ELW 1 (SEG)', 'GW-San'];
+
+    async function missionWindow() {
+        if (!settings.manager || !document.getElementById('mission_general_info')) return;
+        addManagerStyles();
+        const info = document.getElementById('mission_general_info');
+        const title = document.getElementById('missionH1');
+        const el = (tag, cls, text) => {
+            const node = document.createElement(tag);
+            if (cls) node.className = cls;
+            if (text !== undefined) node.textContent = text;
+            return node;
+        };
+
+        // Ø Credits neben dem Namen
+        if (managerOn('mwCredits') && title) {
+            const type = getMissionType();
+            const spec = type ? missionSpec(await getMissions().catch(() => null), type) : null;
+            if (spec && spec.$) title.append(el('span', 'lsshelper-mgr-pill lsshelper-mw-credits', `≈ ${formatNumber(spec.$)} Credits`));
+        }
+
+        // Generierungszeitpunkt; Einsätze werden ab 2 Uhr UTC gelöscht, wenn sie vor dem letzten 2-Uhr-Termin entstanden sind
+        const generated = new Date(info.getAttribute('data-generation-time') || '');
+        const small = info.querySelector(':scope > small');
+        if (managerOn('mwGenerated') && small && !isNaN(generated)) {
+            const hours = (Date.now() - generated) / 3600000;
+            const ago = hours < 1 ? `vor ${Math.max(1, Math.round(hours * 60))} Min.` : hours < 48 ? `vor ${Math.floor(hours)} Std.` : `vor ${Math.floor(hours / 24)} Tagen`;
+            const node = el('span', 'lsshelper-mw-generated', `🕓 ${ago} (${generated.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`);
+            const last2am = new Date();
+            last2am.setUTCHours(2, 0, 0, 0);
+            if (Date.now() < last2am) last2am.setUTCDate(last2am.getUTCDate() - 1);
+            if (settings.mwExpireRed && generated < last2am) {
+                node.classList.add('lsshelper-mw-red');
+                node.title = 'Dieser Einsatz wird in der nächsten Nacht (ab 2 Uhr UTC) gelöscht';
+            } else if (settings.mwGeneratedYellow > 0 && hours >= settings.mwGeneratedYellow) {
+                node.classList.add('lsshelper-mw-yellow');
+            }
+            small.append(' | ', node);
+        }
+
+        // Karte im Hauptfenster auf den Einsatz zentrieren
+        if (managerOn('mwCenterMap') && title && inFrame) {
+            const lat = parseFloat(info.getAttribute('data-latitude'));
+            const lng = parseFloat(info.getAttribute('data-longitude'));
+            const center = el('a', 'lsshelper-mw-center', '⌖');
+            center.href = '#';
+            center.title = 'Karte auf den Einsatz zentrieren';
+            center.addEventListener('click', e => {
+                e.preventDefault();
+                try {
+                    const top = window.top;
+                    if (top.mapkit && top.map && top.map.setCenterAnimated) top.map.setCenterAnimated(new top.mapkit.Coordinate(lat, lng));
+                    else if (top.map && top.map.setView) top.map.setView([lat, lng], top.map.getZoom());
+                } catch (err) {
+                    log('Karte nicht erreichbar', err);
+                }
+            });
+            if (!isNaN(lat) && !isNaN(lng)) title.prepend(center);
+        }
+
+        // Kopfleiste festhalten: bleibt beim Scrollen oben stehen
+        const header = document.querySelector('.mission_header_info');
+        if (managerOn('mwStickyHeader') && header) {
+            header.classList.add('lsshelper-mw-sticky');
+            header.style.backgroundColor = getComputedStyle(document.body).backgroundColor;
+        }
+        const loadBtn = document.querySelector('.missing_vehicles_load');
+        if (managerOn('mwLoadInHeader') && header && loadBtn) {
+            const copy = loadBtn.cloneNode(true);
+            copy.removeAttribute('id');
+            copy.classList.add('lsshelper-mw-load');
+            copy.addEventListener('click', e => {
+                e.preventDefault();
+                loadBtn.click();
+            });
+            header.append(copy);
+        }
+
+        missionPatients();
+        missionCounters();
+        vehicleSelectionTools();
+    }
+
+    // Patienten: Zusammenfassung des Bedarfs, Einklappen und Restbehandlungsdauer
+    function missionPatients() {
+        const patients = Array.from(document.querySelectorAll('.mission_patient'));
+        if (patients.length && (managerOn('mwPatientSummary') || (settings.manager && settings.mwCollapsePatients > 0 && patients.length >= settings.mwCollapsePatients))) {
+            const needs = {};
+            patients.forEach(patient => {
+                const alert = patient.querySelector('.alert-danger');
+                if (!alert) return;
+                alert.textContent
+                    .replace(/^[^:]*:/, '')
+                    .split(',')
+                    .map(text => text.trim())
+                    .filter(Boolean)
+                    .forEach(need => (needs[need] = ONCE_PER_MISSION.includes(need) ? 1 : (needs[need] || 0) + 1));
+            });
+            const box = document.createElement('div');
+            box.className = 'lsshelper-mw-patients';
+            const text = Object.keys(needs).sort().map(need => `${needs[need]}× ${need}`).join(', ');
+            box.textContent = `🤕 ${patients.length} Patient${patients.length === 1 ? '' : 'en'}${text ? ` – es fehlt: ${text}` : ' – nichts offen'}`;
+            if (settings.mwCollapsePatients > 0 && patients.length >= settings.mwCollapsePatients) {
+                const toggle = document.createElement('a');
+                toggle.href = '#';
+                toggle.className = 'btn btn-default btn-xs';
+                const apply = hidden => {
+                    patients.forEach(patient => (patient.style.display = hidden ? 'none' : ''));
+                    toggle.textContent = hidden ? 'Patienten zeigen' : 'Patienten einklappen';
+                };
+                let hidden = true;
+                toggle.addEventListener('click', e => {
+                    e.preventDefault();
+                    apply((hidden = !hidden));
+                });
+                apply(hidden);
+                box.append(' ', toggle);
+            }
+            patients[0].before(box);
+        }
+        // Das Spiel meldet die Behandlung pro Patient; daraus die Restzeit bis zum Ende ableiten
+        if (managerOn('mwPatientTime')) {
+            const ends = new Map();
+            hookGame('patientTimerMission', patient => {
+                if (!patient || patient.target_percent) return;
+                const bar = document.getElementById(`mission_patients_${patient.id}`);
+                if (bar && bar.parentElement) ends.set(bar.parentElement, Date.now() + patient.miliseconds_by_percent * patient.live_current_value);
+            });
+            setInterval(() => {
+                ends.forEach((end, barOuter) => {
+                    if (!barOuter.isConnected) return ends.delete(barOuter);
+                    let label = barOuter.parentElement.querySelector(':scope > .lsshelper-ml-time');
+                    if (!label) {
+                        label = document.createElement('div');
+                        label.className = 'mission_overview_countdown lsshelper-ml-time';
+                        barOuter.before(label);
+                    }
+                    label.textContent = formatSeconds((end - Date.now()) / 1000);
+                });
+            }, 1000);
+        }
+    }
+
+    // Zähler an „Personen vor Ort“: Fahrzeuge bzw. Spieler auf Anfahrt | vor Ort | gesamt, antippen öffnet die Aufstellung
+    function missionCounters() {
+        const holder = document.getElementById('amount_of_people');
+        if (!managerOn('mwCounters') || !holder) return;
+        const rows = {
+            driving: Array.from(document.querySelectorAll('#mission_vehicle_driving tbody tr')),
+            atScene: Array.from(document.querySelectorAll('#mission_vehicle_at_mission tbody tr')),
+        };
+        const count = keyOf => {
+            const result = { driving: {}, atScene: {}, total: {}, names: {} };
+            Object.entries(rows).forEach(([table, list]) =>
+                list.forEach(row => {
+                    const key = keyOf(row, result.names);
+                    if (key === null) return;
+                    result[table][key] = (result[table][key] || 0) + 1;
+                    result.total[key] = (result.total[key] || 0) + 1;
+                })
+            );
+            return result;
+        };
+        const vehicles = count((row, names) => {
+            const el = row.querySelector('[vehicle_type_id]');
+            if (!el) return null;
+            const type = el.getAttribute('vehicle_type_id');
+            names[type] = dataLabels.vehicles[type] || `Typ ${type}`;
+            return type;
+        });
+        const players = count((row, names) => {
+            const link = row.querySelector('a[href^="/profile/"]');
+            if (!link) return null;
+            names[link.getAttribute('href')] = link.textContent.trim();
+            return link.getAttribute('href');
+        });
+        const field = (label, data, sum) => {
+            const wrap = document.createElement('span');
+            wrap.className = 'lsshelper-mw-counter';
+            const pill = document.createElement('span');
+            pill.className = 'label label-info';
+            pill.textContent = `${label} ${sum(data.driving)}|${sum(data.atScene)}|${sum(data.total)} ▾`;
+            const table = document.createElement('table');
+            table.className = 'table table-condensed table-striped lsshelper-mw-counter-table';
+            table.hidden = true;
+            const head = table.createTHead().insertRow();
+            ['', 'Anfahrt', 'vor Ort', 'gesamt'].forEach(text => (head.insertCell().outerHTML = `<th>${text}</th>`));
+            const body = table.createTBody();
+            Object.keys(data.total)
+                .sort((a, b) => data.names[a].localeCompare(data.names[b]))
+                .forEach(key => {
+                    const row = body.insertRow();
+                    [data.names[key], data.driving[key] || 0, data.atScene[key] || 0, data.total[key]].forEach(value => (row.insertCell().textContent = value));
+                });
+            pill.addEventListener('click', () => (table.hidden = !table.hidden));
+            wrap.append(pill, table);
+            holder.append(wrap);
+        };
+        field('Fahrzeuge', vehicles, list => Object.values(list).reduce((a, b) => a + b, 0));
+        field('Spieler', players, list => Object.keys(list).length);
+    }
+
+    // Fahrzeugauswahl: Typ anzeigen, Auswahl zurücksetzen, Liste zuklappen, längste Anfahrtszeit, Zähler im Bereitstellungsraum
+    function vehicleSelectionTools() {
+        if (managerOn('mwVehicleType')) {
+            document.querySelectorAll('#vehicle_show_table_all tbody tr').forEach(row => {
+                const type = row.getAttribute('vehicle_type');
+                const label = row.querySelector('td[vehicle_type_id] label.mission_vehicle_label, label.mission_vehicle_label');
+                if (type && label && !label.querySelector('.lsshelper-mw-type')) {
+                    const small = document.createElement('small');
+                    small.className = 'lsshelper-mw-type';
+                    small.textContent = ` [${type}]`;
+                    label.append(small);
+                }
+            });
+        }
+        const dispatch = document.getElementById('dispatch_buttons');
+        const alarmBtn = document.getElementById('mission_alarm_btn');
+        const toolbar = dispatch || (alarmBtn && alarmBtn.parentElement);
+        if (managerOn('mwReset') && toolbar) {
+            const reset = document.createElement('a');
+            reset.href = '#';
+            reset.className = 'btn btn-default lsshelper-mw-reset';
+            reset.textContent = '✕ Auswahl zurücksetzen';
+            // Häkchen per Klick lösen, damit das Spiel seine Zähler und Anzeigen selbst nachführt
+            reset.addEventListener('click', e => {
+                e.preventDefault();
+                document.querySelectorAll('.vehicle_checkbox:checked').forEach(box => box.click());
+            });
+            toolbar.prepend(reset);
+        }
+        if (managerOn('mwHideVehicleList') && toolbar) {
+            const parts = ['h2_free_vehicles', 'vehicle_list_step', 'group_max_distance'].map(id => document.getElementById(id)).filter(Boolean);
+            if (parts.length) {
+                const toggle = document.createElement('a');
+                toggle.href = '#';
+                toggle.className = 'btn btn-success lsshelper-mw-hide';
+                const apply = hidden => {
+                    parts.forEach(part => part.classList.toggle('hidden', hidden));
+                    toggle.textContent = hidden ? 'Fahrzeugliste zeigen' : 'Fahrzeugliste ausblenden';
+                };
+                let hidden = true;
+                toggle.addEventListener('click', e => {
+                    e.preventDefault();
+                    apply((hidden = !hidden));
+                });
+                apply(hidden);
+                toolbar.prepend(toggle);
+            }
+        }
+        if (managerOn('mwAlarmTime') && alarmBtn) {
+            const badge = document.createElement('span');
+            badge.className = 'badge lsshelper-mw-alarmtime';
+            alarmBtn.after(badge);
+            // Die Liste ist nach Entfernung sortiert: das zuletzt angehakte Fahrzeug braucht am längsten
+            const update = () => {
+                const checked = Array.from(document.querySelectorAll('#vehicle_list_step #all .vehicle_checkbox:checked, #vehicle_show_table_all .vehicle_checkbox:checked'));
+                const last = checked[checked.length - 1];
+                const cell = last && document.getElementById(`vehicle_sort_${last.value}`);
+                const text = cell && cell.childNodes[0] ? cell.childNodes[0].textContent.trim() : '';
+                // Noch nicht berechnete Zeit beim Spiel anfragen
+                if (cell && !/\d/.test(text)) {
+                    const calc = cell.closest('tr') && cell.closest('tr').querySelector('.calculateTime');
+                    if (calc && !calc.dataset.lsshelperAsked) {
+                        calc.dataset.lsshelperAsked = '1';
+                        calc.click();
+                        setTimeout(update, 1500);
+                    }
+                }
+                badge.textContent = /\d/.test(text) ? `⏱ ${text}` : '';
+                badge.style.display = badge.textContent ? '' : 'none';
+            };
+            document.addEventListener('change', e => e.target.classList && e.target.classList.contains('vehicle_checkbox') && setTimeout(update, 50), true);
+            document.addEventListener('click', e => e.target.closest && e.target.closest('a.aao, a.vehicle_group') && setTimeout(update, 600), true);
+            update();
+        }
+    }
+
+    // Bereitstellungsraum: wie viele Fahrzeuge gerade angehakt sind
+    function stagingCounter() {
+        const form = document.querySelector('form[action^="/buildings/alarm/"]');
+        if (!managerOn('mwStagingCounter') || !form) return;
+        addManagerStyles();
+        const counters = Array.from(form.querySelectorAll('input.btn.btn-success[type="submit"]')).map(btn => {
+            const counter = document.createElement('span');
+            counter.className = 'badge';
+            btn.after(counter);
+            return counter;
+        });
+        const update = () => {
+            const amount = String(form.querySelectorAll('input.vehicle_checkbox:checked').length);
+            counters.forEach(counter => (counter.textContent = amount));
+        };
+        form.addEventListener('change', update);
+        form.addEventListener('click', () => setTimeout(update, 300));
+        update();
+    }
+
     // Einsatzfenster: Vor/Zurück in der Reihenfolge, die die Einsatzliste im Hauptfenster gerade zeigt
     function missionWindowOrder() {
         if (!managerOn('mlSortWindow') || !(managerOn('mlSort') || managerOn('mlStar')) || !inFrame) return;
@@ -3132,6 +3484,8 @@
         { name: 'managerStyles', match: /^\/(vehicles|buildings)\/\d+/, run: () => settings.manager && addManagerStyles() },
         { name: 'touchButtons', match: /^\/missions\/\d+/, run: touchButtons },
         { name: 'missionList', match: /^\/$/, run: missionList },
+        { name: 'missionWindow', match: /^\/missions\/\d+/, run: missionWindow },
+        { name: 'stagingCounter', match: /^\/buildings\/\d+/, run: stagingCounter },
         { name: 'missionWindowOrder', match: /^\/missions\/\d+/, run: missionWindowOrder },
     ];
 

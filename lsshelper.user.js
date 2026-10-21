@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.27.4
+// @version      0.28.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1057,23 +1057,54 @@
 
         // 0) Übergabeort: Patienten warten auf den Rettungsdienst – RTW pro Patient, NEF wo gefordert
         const patientCount = document.querySelectorAll('.mission_patient').length;
-        if (/übergabe/i.test(title) || (!type && patientCount && !missing.length)) {
+        let markedHandoff = false;
+        try {
+            const handoff = window.top.LSSHelperShared && window.top.LSSHelperShared.handoff;
+            markedHandoff = !!handoff && (location.pathname.match(/^\/missions\/(\d+)/) || [])[1] in handoff;
+        } catch (e) {
+            /* ohne Hauptfenster */
+        }
+        if (/übergabe/i.test(title) || markedHandoff || (!type && patientCount && !missing.length)) {
             const medical = MEDICAL.default;
             const demands = [];
+            // Schon vor den Patienten erkennen, was kommt: Zum Übergabeort fahren nur Zubringer (Bergrettung, Boote,
+            // Hubschrauber …) und der Rettungsdienst. Jeder Zubringer bringt mindestens einen Patienten.
+            const rescueTypes = new Set(['transport', 'transportKtw', 'ktw', 'nef', 'lna', 'orgl'].flatMap(k => (medical[k] ? medical[k].types : [])).filter(t => t !== 31 && t !== 157));
+            const carriers = ['#mission_vehicle_driving tbody tr', '#mission_vehicle_at_mission tbody tr']
+                .flatMap(sel => Array.from(document.querySelectorAll(sel)))
+                .map(row => {
+                    const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
+                    return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
+                })
+                .filter(t => !isNaN(t) && !rescueTypes.has(t)).length;
+            // Patientenzahl, die das Spiel mit der Einsatzmeldung schickt (Hauptfenster merkt sie sich)
+            let announced = 0;
+            try {
+                const info = window.top.LSSHelperShared && window.top.LSSHelperShared.handoff;
+                const id = (location.pathname.match(/^\/missions\/(\d+)/) || [])[1];
+                announced = (info && info[id]) || 0;
+            } catch (e) {
+                /* ohne Hauptfenster */
+            }
+            const expected = Math.max(patientCount, carriers, announced);
+            const waitingFor = expected - patientCount;
             const transport = Object.assign({}, medical.transport, { attrs: ['rtw', 'naw', 'ktw_or_rtw', 'ktw_or_rtw_2'] });
             // Verlangen Patienten ausdrücklich einen KTW (Krankentransport) bzw. „RTW oder KTW“, gilt das statt „RTW je Patient“
             const ktwPatients = (patientNeeds.ktw || 0) + (patientNeeds.transportKtw || 0);
             if (patientNeeds.ktw) demands.push({ demand: medical.ktw, label: 'KTW (1 pro Patient)', need: patientNeeds.ktw, scope: 'all' });
             if (patientNeeds.transportKtw) demands.push({ demand: medical.transportKtw, label: 'RTW oder KTW (1 pro Patient)', need: patientNeeds.transportKtw, scope: 'all' });
-            if (patientCount > ktwPatients) demands.push({ demand: transport, label: 'RTW (1 pro Patient)', need: patientCount - ktwPatients, scope: 'all' });
+            if (expected > ktwPatients) demands.push({ demand: transport, label: waitingFor > 0 ? `RTW (1 pro Patient, ${waitingFor} noch unterwegs)` : 'RTW (1 pro Patient)', need: expected - ktwPatients, scope: 'all' });
             ['nef', 'rth', 'lna', 'orgl'].forEach(key => {
                 if (patientNeeds[key]) demands.push({ demand: medical[key], label: medical[key].label, need: patientNeeds[key] });
             });
             // Bei mehr als 5 bzw. 10 Patienten verlangt das Spiel LNA bzw. OrgL
-            if (patientCount >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1, scope: 'all' });
-            if (patientCount >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1, scope: 'all' });
+            if (expected >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1, scope: 'all' });
+            if (expected >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1, scope: 'all' });
             applyPresent(demands, present, 'driving');
-            const infos = patientCount ? [`ℹ Patienten: ${patientCount}`] : ['ℹ Keine Patienten im Einsatzfenster erkannt'];
+            const infos = expected
+                ? [`ℹ Patienten: ${patientCount} da${waitingFor > 0 ? `, ${waitingFor} unterwegs (${carriers} Zubringer${announced ? `, ${announced} gemeldet` : ''})` : ''}`]
+                : ['ℹ Noch keine Patienten und keine Zubringer erkannt'];
+            if (waitingFor > 0) infos.push('ℹ NEF zeigt das Spiel erst, wenn die Patienten da sind');
             const place = /übergabe/i.test(title) ? 'Übergabeort' : 'Patienten';
             markDemands(container, aaos, demands, infos, `LSS Helper: ${place} – benötigter Rettungsdienst (Zahl an der AAO = so oft klicken):`);
             return;
@@ -3304,6 +3335,11 @@
         hookGame('missionMarkerAdd', marker => {
             if (!marker || marker.id === undefined) return;
             if (marker.created_at) (shared.missionCreated = shared.missionCreated || {})[String(marker.id)] = marker.created_at;
+            // Übergabeort: wie viele Patienten das Spiel ankündigt (fürs Einsatzfenster, bevor sie angezeigt werden)
+            if (marker.handoff || marker.mission_type === 'handoff') {
+                const count = Math.max(Number(marker.possible_patients_count) || 0, Number(marker.patients_count) || 0);
+                (shared.handoff = shared.handoff || {})[String(marker.id)] = count;
+            }
             const cur = recordFromMarker(marker);
             // Liste noch unbekannt (Meldung ohne Besitzer): aus der Einsatzliste, sobald der Eintrag da ist
             if (!cur.list) cur.list = panelList(panelOf(cur.id));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.2
+// @version      0.28.3
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -41,6 +41,7 @@
         minChance: 50,
         hotkey: 'y',
         nextTransport: true,
+        reserveThw: true,
         buildingPersonnel: true,
         buildingExpansions: true,
         dispatchBacklog: true,
@@ -113,6 +114,7 @@
                 ['openTab', 'Reiter mit der Markierung automatisch öffnen'],
                 ['showList', 'Fahrzeugliste in der Helfer-Leiste zeigen'],
                 ['createButton', 'Knopf „AAO anlegen“ zeigen', 'Wenn es keine AAO mit dem Einsatznamen gibt'],
+                ['reserveThw', 'THW-Fahrzeuge nur als Ersatz', 'Wählt eine AAO z. B. die NEA 50 vom THW, obwohl ein passendes Fahrzeug einer anderen Wache frei ist, wird getauscht. Ist nichts anderes frei, bleibt das THW-Fahrzeug.'],
             ],
         },
         {
@@ -874,10 +876,68 @@
                 }
             }
             // Kurz warten, bis das Spiel ausgewählt und die Leiste neu gerechnet hat – sonst käme bei schnellem Doppeldruck alles doppelt
-            await sleep(1300);
+            await sleep(600);
+            await preferNonReserve();
+            await sleep(700);
         } finally {
             hotkeyBusy = false;
         }
+    }
+
+    // „THW nur als Ersatz“: angehakte THW-Fahrzeuge gegen freie, gleichwertige Fahrzeuge anderer Wachen tauschen.
+    // Gleichwertig = passt zu allen Bedarfen dieses Einsatzes, für die das THW-Fahrzeug infrage kommt.
+    const RESERVE_BUILDING_TYPES = [9];
+    let reserveBusy = false;
+    async function preferNonReserve() {
+        if (!settings.reserveThw || reserveBusy) return 0;
+        reserveBusy = true;
+        try {
+            const { buildings, vehicles } = await loadBasics().catch(() => ({ buildings: [], vehicles: [] }));
+            const buildingType = Object.fromEntries(buildings.map(b => [b.id, b.building_type]));
+            const reserveVehicle = Object.fromEntries(vehicles.map(v => [String(v.id), RESERVE_BUILDING_TYPES.includes(buildingType[v.building_id])]));
+            const list = Array.from(document.querySelectorAll('#vehicle_show_table_all tbody tr, #vehicle_show_table_body_all tr'))
+                .filter((row, i, all) => all.indexOf(row) === i)
+                .map(row => {
+                    const box = row.querySelector('.vehicle_checkbox');
+                    const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
+                    return box && { box, type: el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN, reserve: !!reserveVehicle[box.value] };
+                })
+                .filter(Boolean);
+            // Bedarfe des Einsatzes (sonst alle bekannten), die einen Fahrzeugtyp abdecken
+            const pool = (lastAllDemands || []).map(d => d.demand).filter(Boolean);
+            const demandsFor = type => {
+                const own = pool.filter(d => d.types.includes(type));
+                return own.length ? own : DEMANDS.filter(d => d.types.includes(type));
+            };
+            const used = new Set();
+            let swaps = 0;
+            list.filter(r => r.box.checked && r.reserve).forEach(r => {
+                const demands = demandsFor(r.type);
+                if (!demands.length) return;
+                // Liste ist nach Entfernung sortiert: das erste passende ist das nächstgelegene
+                const alt = list.find(a => !a.box.checked && !a.reserve && !used.has(a) && demands.every(d => d.types.includes(a.type)));
+                if (!alt) return;
+                used.add(alt);
+                r.box.click();
+                alt.box.click();
+                swaps++;
+            });
+            return swaps;
+        } finally {
+            reserveBusy = false;
+        }
+    }
+
+    // Nach einem AAO-Klick von Hand ebenfalls tauschen (die Taste erledigt das selbst)
+    function reserveOnClick() {
+        if (!settings.reserveThw || !document.getElementById('mission-aao-group')) return;
+        document.addEventListener(
+            'click',
+            e => {
+                if (e.isTrusted && !hotkeyBusy && e.target.closest && e.target.closest('a.aao, a.vehicle_group')) setTimeout(preferNonReserve, 700);
+            },
+            true
+        );
     }
 
     // Liefert true, wenn die Taste hier etwas auslöst (auch vom Hauptfenster aus aufrufbar)
@@ -3553,6 +3613,7 @@
             const alarm = document.getElementById('mission_alarm_btn');
             if (!isMission || !alarm) return skip();
             if (!document.querySelector('.vehicle_checkbox:checked')) return flash('Kein Fahrzeug angehakt – erst auswählen (oder überspringen).');
+            await preferNonReserve();
             // Teilalarm: was danach noch fehlt und nicht frei ist, kommt auf die Warteliste
             await rememberUnmet();
             const next = mode.takeNext();
@@ -3911,6 +3972,7 @@
         { name: 'refreshVehicleData', match: /^\/$/, run: refreshVehicleData },
         { name: 'hotkeyRelay', match: /^\/$/, run: hotkeyRelay },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
+        { name: 'reserveOnClick', match: /^\/missions\/\d+/, run: reserveOnClick },
         { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },

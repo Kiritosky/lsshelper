@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.25.0
+// @version      0.25.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -777,6 +777,8 @@
     // Was die Taste auswählen kann: pro Bedarf die passenden AAOs ({ aao, clicks }), beste zuerst.
     // Welche davon geklickt wird, entscheidet sich erst beim Drücken – dann zeigt das Spiel an, was gerade verfügbar ist.
     const hotkeyChoices = [];
+    // Noch offene Bedarfe der letzten Markierung (für den Leitstellen-Modus: worauf ein übersprungener Einsatz wartet)
+    let lastDemands = null;
 
     // Verfügbarkeit laut Spiel (grüner Haken / rotes Kreuz an der AAO); null, solange das Spiel noch rechnet
     function aaoAvailable(aao) {
@@ -866,6 +868,7 @@
         // Was der Einsatz nur selten braucht, wird genannt, aber weder markiert noch per Taste ausgewählt
         const rare = d => d.chance !== undefined && d.chance < settings.minChance;
         const open = demands.filter(d => d.need > 0 && !rare(d));
+        lastDemands = open;
         const items = resolveDemands(open, aaos, parsed).map(r => {
             r.hits.forEach(h => clicksByAao.set(h.aao, Math.max(h.clicks, clicksByAao.get(h.aao) || 0)));
             if (r.options.length && settings.markVehicles) hotkeyChoices.push(r.options);
@@ -991,6 +994,7 @@
                 .catch(log);
         }
         hotkeyChoices.length = 0;
+        lastDemands = null;
         const showName = byName => {
             hotkeyChoices.push([{ aao: byName[0], clicks: 1 }]);
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
@@ -2875,10 +2879,34 @@
         return el && el.offsetParent !== null ? el.textContent.trim() : el ? el.textContent.trim() : '';
     };
 
+    // Einsatzfenster: Bedarfe, für die gerade kein passendes Fahrzeug frei in der Liste steht -> [{ label, types }]
+    async function unmetDemands() {
+        let demands = lastDemands;
+        // Bei einer AAO mit Einsatznamen gibt es keine Einzelbedarfe – dann aus den Einsatzdaten ermitteln
+        if (!demands) {
+            const type = getMissionType();
+            const missions = type ? await getMissions().catch(() => ({})) : {};
+            const mission = type ? missions[type] || missions[type.split(/[-/]/)[0]] : null;
+            if (!mission) return [];
+            demands = missionDemands(mission, document.querySelectorAll('.mission_patient').length).demands;
+            applyPresent(demands, presentVehicles(), 'all');
+            demands = demands.filter(d => d.need > 0 && !(d.chance !== undefined && d.chance < settings.minChance));
+        }
+        const free = new Set(
+            Array.from(document.querySelectorAll('#vehicle_show_table_all tbody tr'))
+                .filter(row => !row.querySelector('.vehicle_checkbox:checked'))
+                .map(row => {
+                    const el = row.querySelector('[vehicle_type_id]');
+                    return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
+                })
+        );
+        return demands.filter(d => d.demand && d.demand.types.length && !d.demand.types.some(type => free.has(type))).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
+    }
+
     function dispatchMain() {
         if (inFrame || !document.getElementById('missions-panel-body')) return;
         addStyles();
-        const mode = (shared.dispatch = shared.dispatch || { active: false, queue: [], opened: new Set(), log: [], pendingUrl: null, opened_missing: {}, fms: {} });
+        const mode = (shared.dispatch = shared.dispatch || { active: false, queue: [], opened: new Set(), log: [], pendingUrl: null, opened_missing: {}, fms: {}, vehicleType: {}, waiting: {} });
         const known = new Map();
         const note = text => {
             mode.log.unshift(`${new Date().toLocaleTimeString('de-DE')} ${text}`);
@@ -2889,15 +2917,19 @@
             known.set(id, { state: panelState(panel), missing: panelMissing(panel) });
         });
 
-        // Ist gerade ein Spielfenster offen? (sichtbares iframe mit einer Spielseite)
+        // Ist gerade ein Spielfenster offen? Sichtbares iframe mit einer Spielseite – auch wenn es noch lädt (dann zählt die Zieladresse)
+        const GAME_PAGE = /^\/(missions|vehicles|buildings|aaos|profile|credits|verband|alliance)/;
+        let lastOpen = 0;
         const windowOpen = () =>
+            Date.now() - lastOpen < 1500 ||
             Array.from(document.querySelectorAll('iframe')).some(frame => {
                 if (!frame.getClientRects().length || frame.offsetWidth < 200) return false;
                 try {
-                    return /^\/(missions|vehicles|buildings|aaos|profile|credits|verband|alliance)/.test(frame.contentWindow.location.pathname);
+                    if (GAME_PAGE.test(frame.contentWindow.location.pathname)) return true;
                 } catch (e) {
-                    return false;
+                    /* fremder Ursprung */
                 }
+                return GAME_PAGE.test(new URL(frame.getAttribute('src') || 'about:blank', location.origin).pathname);
             });
 
         const button = document.createElement('a');
@@ -2906,7 +2938,9 @@
         button.className = 'btn btn-xs btn-success';
         const render = () => {
             button.className = `btn btn-xs ${mode.active ? 'btn-danger' : 'btn-success'}`;
-            button.textContent = mode.active ? `■ Leitstellen-Modus stoppen${mode.queue.length ? ` (${mode.queue.length} warten)` : ''}` : '▶ Leitstellen-Modus';
+            const waiting = Object.keys(mode.waiting).length;
+            const extra = [mode.queue.length ? `${mode.queue.length} offen` : '', waiting ? `${waiting} warten auf Fahrzeuge` : ''].filter(Boolean).join(', ');
+            button.textContent = mode.active ? `■ Leitstellen-Modus stoppen${extra ? ` (${extra})` : ''}` : '▶ Leitstellen-Modus';
         };
 
         const enqueue = item => {
@@ -2918,7 +2952,7 @@
             mode.queue.sort((a, b) => a.priority - b.priority || a.at - b.at);
             note(`+ ${item.label}`);
             render();
-            setTimeout(processQueue, 300);
+            setTimeout(processQueue, 0);
         };
         const drop = key => {
             const before = mode.queue.length;
@@ -2937,11 +2971,20 @@
             return item || null;
         };
         mode.count = () => mode.queue.length;
+        // Übersprungen oder nur teilweise alarmiert: Einsatz wartet, bis ein Fahrzeug eines fehlenden Typs frei wird
+        mode.waitFor = (id, unmet) => {
+            if (!unmet || !unmet.length) return delete mode.waiting[id];
+            mode.waiting[id] = { types: new Set(unmet.flatMap(u => u.types)), labels: unmet.map(u => u.label) };
+            note(`⏳ Einsatz ${id} wartet auf ${mode.waiting[id].labels.join(', ')}`);
+            render();
+        };
         const processQueue = () => {
-            if (!mode.active || windowOpen() || typeof window.lightboxOpen !== 'function') return;
+            if (!mode.active || mode.starting || windowOpen() || typeof window.lightboxOpen !== 'function') return;
             const url = mode.pendingUrl || (mode.queue.length ? mode.takeNext().url : null);
             mode.pendingUrl = null;
-            if (url) window.lightboxOpen(url);
+            if (!url) return;
+            lastOpen = Date.now();
+            window.lightboxOpen(url);
         };
         mode.stop = () => {
             mode.active = false;
@@ -2985,7 +3028,10 @@
             const list = panelList(document.getElementById(`mission_${id}`));
             if (!listAllowed(list)) return;
             // Alles da und nichts fehlt: wartende Einträge zu diesem Einsatz sind erledigt
-            if (cur.state === 2 && !cur.missing) return drop(`m${id}`);
+            if (cur.state === 2 && !cur.missing) {
+                delete mode.waiting[id];
+                return drop(`m${id}`);
+            }
             if (!prev) {
                 if (settings.dispatchNew) enqueue(missionItem(id, 'new', parseMissing(cur.missing)));
                 return;
@@ -2997,12 +3043,27 @@
         });
         hookGame('missionDelete', id => {
             known.delete(String(id));
+            delete mode.waiting[String(id)];
             drop(`m${id}`);
         });
         hookGame('radioMessage', message => {
             if (!message || message.type !== 'vehicle_fms' || message.user_id !== window.user_id) return;
             const was = mode.fms[message.id];
             mode.fms[message.id] = message.fms_real;
+            // Fahrzeug frei (Status 1/2): wartende Einsätze, denen genau dieser Typ fehlte, wieder öffnen
+            const type = mode.vehicleType[message.id];
+            if (mode.active && (message.fms_real === 1 || message.fms_real === 2) && type !== undefined) {
+                Object.entries(mode.waiting).forEach(([missionId, wait]) => {
+                    if (!wait.types.has(type)) return;
+                    const panel = document.getElementById(`mission_${missionId}`);
+                    if (!panel || panel.classList.contains('mission_deleted')) return delete mode.waiting[missionId];
+                    delete mode.waiting[missionId];
+                    const item = missionItem(missionId, 'escalation', {});
+                    item.sig = `m${missionId}|frei|${Date.now()}`;
+                    item.label = item.label.replace('(Nachalarmierung)', `(${wait.labels.join(', ')} wieder frei)`);
+                    enqueue(item);
+                });
+            }
             if (message.fms_real !== 5) return drop(`v${message.id}`);
             // Ein Sprechwunsch zählt einmal, bis das Fahrzeug Status 5 wieder verlässt
             if (was !== 5 && mode.active && settings.dispatchTransport) {
@@ -3010,11 +3071,18 @@
             }
         });
         // Wird ein Fenster geschlossen, kommt das nächste dran
-        hookGame('lightboxClose', () => setTimeout(processQueue, 500));
-        setInterval(processQueue, 3000);
+        hookGame('lightboxClose', () => setTimeout(processQueue, 100));
+        setInterval(processQueue, 1000);
+        let watchTimer = 0;
+        new MutationObserver(() => {
+            if (!mode.active || watchTimer) return;
+            watchTimer = setTimeout(() => ((watchTimer = 0), processQueue()), 150);
+        }).observe(document.body, { childList: true });
 
         const start = async () => {
             mode.active = true;
+            // Erst alles einsammeln (offene Einsätze und Sprechwünsche), dann in der richtigen Reihenfolge öffnen
+            mode.starting = true;
             mode.queue = [];
             mode.opened = new Set();
             mode.opened_missing = {};
@@ -3028,13 +3096,16 @@
                     if (state === 0 || (state !== 2 && missing)) enqueue(missionItem(id, 'backlog', parseMissing(missing)));
                 });
             }
-            if (settings.dispatchTransport) {
+            mode.waiting = {};
+            {
                 const vehicles = await fetchJson('/api/vehicles').catch(() => []);
                 (Array.isArray(vehicles) ? vehicles : []).forEach(v => {
                     mode.fms[v.id] = v.fms_real;
-                    if (v.fms_real === 5) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
+                    mode.vehicleType[v.id] = v.vehicle_type;
+                    if (v.fms_real === 5 && settings.dispatchTransport) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
                 });
             }
+            mode.starting = false;
             render();
             processQueue();
         };
@@ -3077,15 +3148,24 @@
             info.classList.add('lsshelper-dispatch-warn');
             setTimeout(() => ((info.classList.remove('lsshelper-dispatch-warn')), update()), 2500);
         };
-        const skip = () => {
+        const missionId = (location.pathname.match(/^\/missions\/(\d+)/) || [])[1];
+        const rememberUnmet = async () => {
+            if (!missionId) return;
+            const unmet = await unmetDemands().catch(() => []);
+            mode.waitFor(missionId, unmet);
+        };
+        const skip = async () => {
+            await rememberUnmet();
             const next = mode.takeNext();
             if (next) location.href = next.url;
             else close();
         };
-        const alarmNext = () => {
+        const alarmNext = async () => {
             const alarm = document.getElementById('mission_alarm_btn');
             if (!isMission || !alarm) return skip();
             if (!document.querySelector('.vehicle_checkbox:checked')) return flash('Kein Fahrzeug angehakt – erst auswählen (oder überspringen).');
+            // Teilalarm: was danach noch fehlt und nicht frei ist, kommt auf die Warteliste
+            await rememberUnmet();
             const next = mode.takeNext();
             const field = document.getElementById('next_mission_id');
             // Nächster Einsatz: über das Feld des Spiels; sonst (Sprechwunsch) nach dem Alarmieren selbst hinspringen
@@ -3103,7 +3183,9 @@
             const response = await fetch(`/missions/${id}/alliance`, { credentials: 'same-origin' }).catch(() => null);
             sharing = false;
             if (!response || !response.ok) return flash('Freigeben hat nicht geklappt – bitte im Spiel prüfen.');
-            skip();
+            const next = mode.takeNext();
+            if (next) location.href = next.url;
+            else close();
         };
         const stop = () => {
             mode.stop();
@@ -3114,7 +3196,10 @@
         bar.id = 'lsshelper-dispatch-bar';
         const info = document.createElement('span');
         info.className = 'lsshelper-dispatch-info';
-        const update = () => (info.textContent = `🚨 Leitstellen-Modus · ${mode.count()} warten`);
+        const update = () => {
+            const waiting = Object.keys(mode.waiting || {}).length;
+            info.textContent = `🚨 Leitstellen-Modus · ${mode.count()} offen${waiting ? ` · ${waiting} warten auf Fahrzeuge` : ''}`;
+        };
         update();
         setInterval(update, 2000);
         bar.append(info);
@@ -3213,7 +3298,8 @@
                 const example = panels[0];
                 if (example) lines.push(`Beispiel-Klassen: ${(example.querySelector('[class*="panel"]') || example).className}`);
                 const mode = shared.dispatch;
-                lines.push(`Modus: ${mode && mode.active ? `aktiv, ${mode.queue.length} warten` : 'aus'}`);
+                lines.push(`Modus: ${mode && mode.active ? `aktiv, ${mode.queue.length} offen` : 'aus'}`);
+                if (mode && mode.waiting) Object.entries(mode.waiting).forEach(([id, wait]) => lines.push(`⏳ Einsatz ${id} wartet auf ${wait.labels.join(', ')}`));
                 if (mode && mode.log.length) lines.push('Letzte Ereignisse:', ...mode.log.slice(0, 15));
                 out.textContent = lines.join('\n');
                 out.hidden = false;

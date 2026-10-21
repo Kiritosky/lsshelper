@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.27.0
+// @version      0.27.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -266,6 +266,7 @@
         // Rettungsdienst / Wasser / SEG
         { label: 'RTW', keys: ['ambulances'], texts: ['RTW'], types: [28, 74, 97], attrs: ['rtw', 'naw'] },
         { label: 'RTW oder KTW', keys: [], texts: ['RTW oder KTW oder KTW-B'], types: [28, 38, 58, 74, 97], attrs: ['rtw', 'ktw', 'ktw_b', 'ktw_or_rtw', 'ktw_or_rtw_2'] },
+        { label: 'KTW', keys: [], texts: ['KTW', 'KTW-B', 'KTW Typ B'], types: [38, 58], attrs: ['ktw', 'ktw_b'] },
         { label: 'GW-San', keys: ['gw_san'], texts: ['GW-San'], types: [60], attrs: ['gw_san'] },
         { label: 'ELW 1 (SEG)', keys: ['seg_elw'], texts: ['ELW 1 (SEG)'], types: [59], attrs: ['seg_elw'] },
         { label: 'Rettungshundestaffel', keys: ['rescue_dog_units'], texts: ['Rettungshundestaffel', 'Rettungshundestaffeln'], types: [91, 92], attrs: ['rescue_dogs', 'rescue_dogs_seg', 'rescue_dogs_thw'] },
@@ -547,6 +548,8 @@
             rth: { label: 'RTH', texts: ['RTH'], types: [31, 157], attrs: ['rth_only'] },
             transport: { label: 'RTW', texts: ['RTW'], types: [28, 74, 97], attrs: ['rtw', 'naw'] },
             transportKtw: { label: 'RTW oder KTW', texts: ['RTW', 'KTW'], types: [28, 38, 58, 74, 97], attrs: ['rtw', 'naw', 'ktw', 'ktw_b', 'ktw_or_rtw', 'ktw_or_rtw_2'] },
+            // Krankentransport: Patient verlangt ausdrücklich einen KTW
+            ktw: { label: 'KTW', texts: ['KTW', 'KTW-B'], types: [38, 58], attrs: ['ktw', 'ktw_b'] },
             lna: { label: 'LNA', texts: ['KdoW-LNA', 'LNA'], types: [55], attrs: ['kdow_lna'] },
             orgl: { label: 'OrgL', texts: ['KdoW-OrgL', 'OrgL'], types: [56], attrs: ['kdow_orgl'] },
         },
@@ -579,9 +582,14 @@
         const needs = {};
         document.querySelectorAll('.mission_patient .alert-danger').forEach(alert => {
             const text = alert.textContent;
-            [['nef', /\bNEF\b/], ['rth', /\bRTH\b/], ['transport', /\bRTW\b/], ['lna', /\bLNA\b/], ['orgl', /\bOrgL\b/]].forEach(([key, re]) => {
+            [['nef', /\bNEF\b/], ['rth', /\bRTH\b/], ['lna', /\bLNA\b/], ['orgl', /\bOrgL\b/]].forEach(([key, re]) => {
                 if (re.test(text)) needs[key] = (needs[key] || 0) + 1;
             });
+            // Transport: „RTW oder KTW“ = beides passt, nur „KTW“ = Krankentransport, nur „RTW“ = Rettungswagen
+            const rtw = /\bRTW\b/.test(text);
+            const ktw = /\bKTW(-B)?\b/.test(text);
+            const transport = rtw && ktw ? 'transportKtw' : ktw ? 'ktw' : rtw ? 'transport' : null;
+            if (transport) needs[transport] = (needs[transport] || 0) + 1;
         });
         return needs;
     }
@@ -1015,7 +1023,11 @@
             const medical = MEDICAL.default;
             const demands = [];
             const transport = Object.assign({}, medical.transport, { attrs: ['rtw', 'naw', 'ktw_or_rtw', 'ktw_or_rtw_2'] });
-            if (patientCount) demands.push({ demand: transport, label: 'RTW (1 pro Patient)', need: patientCount, scope: 'all' });
+            // Verlangen Patienten ausdrücklich einen KTW (Krankentransport) bzw. „RTW oder KTW“, gilt das statt „RTW je Patient“
+            const ktwPatients = (patientNeeds.ktw || 0) + (patientNeeds.transportKtw || 0);
+            if (patientNeeds.ktw) demands.push({ demand: medical.ktw, label: 'KTW (1 pro Patient)', need: patientNeeds.ktw, scope: 'all' });
+            if (patientNeeds.transportKtw) demands.push({ demand: medical.transportKtw, label: 'RTW oder KTW (1 pro Patient)', need: patientNeeds.transportKtw, scope: 'all' });
+            if (patientCount > ktwPatients) demands.push({ demand: transport, label: 'RTW (1 pro Patient)', need: patientCount - ktwPatients, scope: 'all' });
             ['nef', 'rth', 'lna', 'orgl'].forEach(key => {
                 if (patientNeeds[key]) demands.push({ demand: medical[key], label: medical[key].label, need: patientNeeds[key] });
             });
@@ -1024,7 +1036,8 @@
             if (patientCount >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1, scope: 'all' });
             applyPresent(demands, present, 'driving');
             const infos = patientCount ? [`ℹ Patienten: ${patientCount}`] : ['ℹ Keine Patienten im Einsatzfenster erkannt'];
-            markDemands(container, aaos, demands, infos, 'LSS Helper: Übergabeort – benötigter Rettungsdienst (Zahl an der AAO = so oft klicken):');
+            const place = /übergabe/i.test(title) ? 'Übergabeort' : 'Patienten';
+            markDemands(container, aaos, demands, infos, `LSS Helper: ${place} – benötigter Rettungsdienst (Zahl an der AAO = so oft klicken):`);
             return;
         }
 
@@ -1043,7 +1056,7 @@
 
         // 2) Nachalarmierung: das Spiel nennt die fehlenden Fahrzeuge direkt
         if (isFollowUp) {
-            const medicalByName = { nef: medical.nef, rth: medical.rth, rtw: medical.transport, 'kdow lna': medical.lna, lna: medical.lna, 'kdow orgl': medical.orgl, orgl: medical.orgl };
+            const medicalByName = { nef: medical.nef, rth: medical.rth, rtw: medical.transport, ktw: medical.ktw, 'ktw-b': medical.ktw, 'kdow lna': medical.lna, lna: medical.lna, 'kdow orgl': medical.orgl, orgl: medical.orgl };
             missing.forEach(({ name, need }) => {
                 const key = normalize(name);
                 const demand = medicalByName[key] || restrictDemand(DEMAND_BY_TEXT[key], mission);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.23.1
+// @version      0.23.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -40,6 +40,8 @@
         minChance: 50,
         hotkey: 'y',
         nextTransport: true,
+        buildingPersonnel: true,
+        buildingExpansions: true,
     };
     const SETTINGS_LABELS = {
         hotkey: 'Taste, die im Einsatzfenster die markierte AAO auswählt (leer = aus)',
@@ -56,6 +58,8 @@
         colorVehicles: 'Farbe Fahrzeug-AAOs',
         minChance: 'Fahrzeuge erst ab dieser Wahrscheinlichkeit (%) markieren und in neue AAOs aufnehmen',
         nextTransport: 'Nach Krankenhaus-/Zellenwahl automatisch zum nächsten Sprechwunsch (sonst zurück zum Einsatz)',
+        buildingPersonnel: 'Wache: Personalbedarf der Fahrzeuge (Mindest- und Höchstbesatzung) anzeigen',
+        buildingExpansions: 'Wache: Ausbauten oben anzeigen (im Bau mit Restzeit, aktiv, inaktiv, nicht gebaut)',
     };
     const settings = Object.assign({}, DEFAULTS);
     try {
@@ -2549,6 +2553,82 @@
     }
 
     /* ------------------------------------------------------------------ *
+     * Feature: Personalbedarf und Ausbauten in der Gebäudeansicht
+     * ------------------------------------------------------------------ */
+
+    // Restzeit als „2 T 4 Std.“ bzw. „3:05:09“
+    function formatRemaining(ms) {
+        const seconds = Math.max(0, Math.floor(ms / 1000));
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        if (days) return `${days} T ${hours} Std.`;
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    async function buildingInfo() {
+        const id = (location.pathname.match(/^\/buildings\/(\d+)\/?$/) || [])[1];
+        const info = document.querySelector('dl.dl-horizontal');
+        if (!id || !info) return;
+
+        // Ausbauten aus dem Reiter „Ausbauten“ oben zusammenfassen, damit man nicht erst umschalten muss
+        const rows = Array.from(document.querySelectorAll('#ausbauten tbody tr'));
+        if (settings.buildingExpansions && rows.length) {
+            const groups = { running: [], inactive: [], active: [], missing: [] };
+            const timers = [];
+            rows.forEach(row => {
+                const name = row.querySelector('b');
+                if (!name) return;
+                const caption = name.textContent.trim();
+                const end = row.querySelector('[data-end-time]');
+                if (end) {
+                    const label = document.createElement('span');
+                    label.className = 'label label-info';
+                    const endTime = parseInt(end.getAttribute('data-end-time'));
+                    timers.push(() => (label.textContent = `${caption} · noch ${formatRemaining(endTime - Date.now())}`));
+                    groups.running.push(label);
+                } else if (row.querySelector('.label-danger')) {
+                    groups.inactive.push(Object.assign(document.createElement('span'), { className: 'label label-danger', textContent: `${caption} · ${row.querySelector('.label-danger').textContent.trim() || 'inaktiv'}` }));
+                } else if (row.querySelector('.label-success') || row.querySelector('a[href*="extension_ready"]')) {
+                    groups.active.push(Object.assign(document.createElement('span'), { className: 'label label-success', textContent: caption }));
+                } else {
+                    groups.missing.push(Object.assign(document.createElement('span'), { className: 'label label-default', textContent: caption }));
+                }
+            });
+            const box = document.createElement('div');
+            box.id = 'lsshelper-expansions';
+            box.style.cssText = 'margin: 6px 0; line-height: 2;';
+            [['running', 'Im Bau'], ['active', 'Aktiv'], ['inactive', 'Gebaut, aber inaktiv'], ['missing', 'Nicht gebaut']].forEach(([key, title]) => {
+                if (!groups[key].length) return;
+                const line = document.createElement('div');
+                line.append(Object.assign(document.createElement('b'), { textContent: `${title}: ` }));
+                groups[key].forEach(label => line.append(label, ' '));
+                box.append(line);
+            });
+            const tick = () => timers.forEach(update => update());
+            tick();
+            if (timers.length) setInterval(tick, 1000);
+            info.after(box);
+        }
+
+        // Personalbedarf: Summe der Mindest- und Höchstbesatzung, in Klammern ohne Fahrzeuge in Status 6
+        if (settings.buildingPersonnel && document.getElementById('vehicle_table')) {
+            const vehicles = await fetchJson(`/api/buildings/${id}/vehicles`).catch(() => null);
+            if (!Array.isArray(vehicles) || !vehicles.length) return;
+            const maxOf = v => (v.max_personnel_override === null || v.max_personnel_override === undefined ? (STAFF[v.vehicle_type] || [0, 0])[1] : v.max_personnel_override);
+            const sum = (list, get) => list.reduce((total, v) => total + get(v), 0);
+            const active = vehicles.filter(v => v.fms_real !== 6);
+            const minOf = v => (STAFF[v.vehicle_type] || [0, 0])[0];
+            const dt = document.createElement('dt');
+            dt.append(Object.assign(document.createElement('strong'), { textContent: 'Personalbedarf:' }));
+            const dd = document.createElement('dd');
+            dd.textContent = `min ${sum(vehicles, minOf)} / max ${sum(vehicles, maxOf)}`;
+            if (active.length !== vehicles.length) dd.textContent += ` (ohne Status 6: ${sum(active, minOf)} / ${sum(active, maxOf)})`;
+            info.append(dt, dd);
+        }
+    }
+
+    /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
 
@@ -2562,6 +2642,7 @@
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
         { name: 'nextTransport', match: /^\/vehicles\/\d+/, run: nextTransport },
+        { name: 'buildingInfo', match: /^\/buildings\/\d+\/?$/, run: buildingInfo },
     ];
 
     window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, hotkey: triggerHotkey, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };

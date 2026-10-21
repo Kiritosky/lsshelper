@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.26.0
+// @version      0.27.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -53,6 +53,7 @@
         dispatchKeyNext: 'd',
         dispatchKeySkip: 'f',
         dispatchKeyShare: 'g',
+        dispatchAutoSkip: true,
         tcCrew: true,
         tcTransport: true,
         tcExpiring: true,
@@ -74,6 +75,7 @@
                 ['dispatchNew', 'Neue Einsätze öffnen'],
                 ['dispatchEscalation', 'Nachalarmierungen öffnen', 'Wenn neue Fahrzeuge fehlen oder sich ein Einsatz ausbreitet'],
                 ['dispatchTransport', 'Sprechwünsche öffnen', 'Fahrzeuge in Status 5 – vor allen Einsätzen'],
+                ['dispatchAutoSkip', 'Einsätze ohne freies Fahrzeug selbst überspringen', 'Kommen wieder, sobald ein passendes Fahrzeug frei wird'],
                 ['dispatchAlliance', 'Auch Verbandseinsätze'],
                 ['dispatchPlanned', 'Auch geplante Einsätze'],
                 ['dispatchButtons', 'Knöpfe im Fenster', 'Für die Bedienung ohne Tastatur, z. B. am iPad'],
@@ -2742,8 +2744,10 @@
         if (afterChoice && mode && mode.active) {
             return setTimeout(() => {
                 const item = mode.takeNext();
-                if (item) location.href = item.url;
-                else if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
+                if (item) {
+                    mode.expectUrl = item.url;
+                    location.href = item.url;
+                } else if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
             }, 300);
         }
         setTimeout(() => {
@@ -2887,13 +2891,18 @@
 
     // Einsatzfenster: Bedarfe, für die gerade kein passendes Fahrzeug frei in der Liste steht -> [{ label, types }]
     async function unmetDemands() {
+        return (await demandStatus()).unmet;
+    }
+
+    // Offene Bedarfe des Einsatzfensters und welche davon gerade kein freies Fahrzeug haben
+    async function demandStatus() {
         let demands = lastDemands;
         // Bei einer AAO mit Einsatznamen gibt es keine Einzelbedarfe – dann aus den Einsatzdaten ermitteln
         if (!demands) {
             const type = getMissionType();
             const missions = type ? await getMissions().catch(() => ({})) : {};
             const mission = type ? missions[type] || missions[type.split(/[-/]/)[0]] : null;
-            if (!mission) return [];
+            if (!mission) return { open: [], unmet: [] };
             demands = missionDemands(mission, document.querySelectorAll('.mission_patient').length).demands;
             applyPresent(demands, presentVehicles(), 'all');
             demands = demands.filter(d => d.need > 0 && !(d.chance !== undefined && d.chance < settings.minChance));
@@ -2906,7 +2915,8 @@
                     return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
                 })
         );
-        return demands.filter(d => d.demand && d.demand.types.length && !d.demand.types.some(type => free.has(type))).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
+        const unmet = demands.filter(d => d.demand && d.demand.types.length && !d.demand.types.some(type => free.has(type))).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
+        return { open: demands, unmet };
     }
 
     // Startdaten der Hauptseite: das Spiel ruft beim Laden missionMarkerAdd({...}) für jeden Einsatz auf
@@ -2941,8 +2951,34 @@
         };
 
         // Ein Datensatz je Einsatz: aus den Meldungen des Spiels, ergänzt um die Einsatzliste
+        mode.note = note;
         const missions = new Map();
         const panelOf = id => document.getElementById(`mission_${id}`);
+        // Fahrzeuge auf Anfahrt je Einsatz (Status 3): zählen nicht als „fehlend“, auch wenn das Spiel sie noch so anzeigt
+        const driving = new Map();
+        const setDriving = (vehicleId, missionId) => {
+            driving.forEach(set => set.delete(String(vehicleId)));
+            if (missionId) (driving.get(String(missionId)) || driving.set(String(missionId), new Set()).get(String(missionId))).add(String(vehicleId));
+        };
+        // Fehlende Fahrzeuge abzüglich der passenden Fahrzeuge auf Anfahrt
+        const effectiveMissing = (id, missing) => {
+            const onTheWay = Array.from(driving.get(String(id)) || []).map(v => mode.vehicleType[v]);
+            const result = {};
+            Object.entries(missing).forEach(([name, count]) => {
+                const demand = DEMAND_BY_TEXT[normalize(name)];
+                let left = count;
+                if (demand) {
+                    onTheWay.forEach((type, i) => {
+                        if (left > 0 && type !== undefined && demand.types.includes(type)) {
+                            left--;
+                            onTheWay[i] = undefined;
+                        }
+                    });
+                }
+                if (left > 0) result[name] = left;
+            });
+            return result;
+        };
         // Liste aus den Daten der Meldung (zuverlässig, auch wenn der Listeneintrag noch fehlt); sonst aus der Einsatzliste
         const listOfMarker = marker => {
             if (marker.sw) return 'planned';
@@ -3109,6 +3145,8 @@
             mode.queue = mode.queue.filter(q => q.key !== item.key);
             markOpened(item);
             note(`→ ${item.label} (von Hand)`);
+            mode.expectUrl = item.url;
+            mode.manualUrl = item.url;
             lastOpen = Date.now();
             render();
             if (typeof window.lightboxOpen === 'function') window.lightboxOpen(item.url);
@@ -3130,6 +3168,7 @@
             blockedSince = 0;
             const url = mode.pendingUrl || mode.takeNext().url;
             mode.pendingUrl = null;
+            mode.expectUrl = url;
             lastOpen = Date.now();
             window.lightboxOpen(url);
         };
@@ -3191,9 +3230,9 @@
                 return;
             }
             if (!settings.dispatchEscalation || !prev) return;
-            const missing = parseMissing(cur.missing);
+            const missing = effectiveMissing(cur.id, parseMissing(cur.missing));
             const spread = prev.type && cur.type && cur.type !== prev.type && !/^undefined/.test(prev.type);
-            if ((cur.missing && cur.missing !== prev.missing && missingGrew(cur.id, missing)) || spread) {
+            if ((cur.missing && cur.missing !== prev.missing && Object.keys(missing).length && missingGrew(cur.id, missing)) || spread) {
                 enqueue(missionItem(cur.id, 'escalation', spread ? Object.assign({ Ausbreitung: Date.now() }, missing) : missing));
             }
         };
@@ -3245,6 +3284,8 @@
             if (!message || message.type !== 'vehicle_fms' || message.user_id !== window.user_id) return;
             const was = mode.fms[message.id];
             mode.fms[message.id] = message.fms_real;
+            setDriving(message.id, message.fms_real === 3 ? message.mission_id : null);
+            if (message.fms_real === 3 && mode.vehicleType[message.id] === undefined) typeOf(message.id);
             if (message.fms_real !== 5) drop(`v${message.id}`);
             // Ein Sprechwunsch zählt einmal, bis das Fahrzeug Status 5 wieder verlässt
             if (message.fms_real === 5 && was !== 5 && mode.active && settings.dispatchTransport) {
@@ -3297,9 +3338,11 @@
                 });
             }
             const vehicles = await fetchJson('/api/vehicles').catch(() => []);
+            driving.clear();
             (Array.isArray(vehicles) ? vehicles : []).forEach(v => {
                 mode.fms[v.id] = v.fms_real;
                 mode.vehicleType[v.id] = v.vehicle_type;
+                if (v.fms_real === 3 && v.target_type === 'mission' && v.target_id) setDriving(v.id, v.target_id);
                 if (v.fms_real === 5 && settings.dispatchTransport) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
             });
             note(`${mode.queue.length} Einträge zum Start`);
@@ -3329,18 +3372,43 @@
             return;
         }
         if (!mode || !mode.active) return;
-        // Nach dem Alarmieren: zum vorgemerkten Ziel (z. B. Sprechwunsch) weiter
-        if (mode.pendingUrl) {
-            const url = mode.pendingUrl;
-            mode.pendingUrl = null;
-            return location.replace(url);
-        }
-        addStyles();
-        const isMission = /^\/missions\/\d+/.test(location.pathname);
+        const note = text => mode.note && mode.note(text);
+        // Navigieren und dabei merken, welche Seite der Modus erwartet
+        const go = (url, replace) => {
+            mode.expectUrl = url;
+            if (replace) location.replace(url);
+            else location.href = url;
+        };
         const close = () => {
             if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
             else if (window.top.lightboxClose) window.top.lightboxClose();
         };
+        const forward = reason => {
+            const next = mode.takeNext();
+            if (reason) note(reason);
+            if (next) go(next.url, true);
+            else close();
+        };
+        // Nach dem Alarmieren: zum vorgemerkten Ziel (z. B. Sprechwunsch) weiter
+        if (mode.pendingUrl) {
+            const url = mode.pendingUrl;
+            mode.pendingUrl = null;
+            return go(url, true);
+        }
+        const isMission = /^\/missions\/\d+/.test(location.pathname);
+        const isVehicle = /^\/vehicles\/\d+/.test(location.pathname);
+        if (isVehicle) mode.vehicleSeenAt = Date.now();
+        // Nach der Krankenhaus-/Zellenwahl leitet das Spiel teils auf den Einsatz um – der ist aber nicht dran
+        let referrer = '';
+        try {
+            referrer = new URL(document.referrer || 'about:blank', location.origin).pathname;
+        } catch (e) {
+            /* ohne Herkunft */
+        }
+        if (isMission && /^\/vehicles\/\d+/.test(referrer) && mode.expectUrl !== location.pathname && Date.now() - (mode.vehicleSeenAt || 0) < 5 * 60 * 1000) {
+            return forward('Umleitung nach Sprechwunsch übersprungen');
+        }
+        addStyles();
         const flash = text => {
             info.textContent = text;
             info.classList.add('lsshelper-dispatch-warn');
@@ -3355,7 +3423,7 @@
         const skip = async () => {
             await rememberUnmet();
             const next = mode.takeNext();
-            if (next) location.href = next.url;
+            if (next) go(next.url);
             else close();
         };
         const alarmNext = async () => {
@@ -3367,8 +3435,10 @@
             const next = mode.takeNext();
             const field = document.getElementById('next_mission_id');
             // Nächster Einsatz: über das Feld des Spiels; sonst (Sprechwunsch) nach dem Alarmieren selbst hinspringen
-            if (next && next.type === 'mission' && field) field.value = next.id;
-            else if (next) mode.pendingUrl = next.url;
+            if (next && next.type === 'mission' && field) {
+                field.value = next.id;
+                mode.expectUrl = next.url;
+            } else if (next) mode.pendingUrl = next.url;
             alarm.click();
         };
         // Nur im Verband freigeben (ohne Alarm) und weiter
@@ -3382,7 +3452,7 @@
             sharing = false;
             if (!response || !response.ok) return flash('Freigeben hat nicht geklappt – bitte im Spiel prüfen.');
             const next = mode.takeNext();
-            if (next) location.href = next.url;
+            if (next) go(next.url);
             else close();
         };
         const stop = () => {
@@ -3440,6 +3510,45 @@
             },
             true
         );
+
+        // Kein einziges passendes Fahrzeug frei: gleich überspringen (nicht bei von Hand geöffneten Einsätzen)
+        const manual = mode.manualUrl === location.pathname;
+        mode.manualUrl = null;
+        if (isMission && settings.dispatchAutoSkip && !manual) {
+            (async () => {
+                // Warten, bis die Markierung gerechnet hat (höchstens 5 Sekunden)
+                for (let i = 0; i < 25 && !hotkeyReady; i++) await sleep(200);
+                const status = await demandStatus().catch(() => ({ open: [], unmet: [] }));
+                if (!status.open.length || status.unmet.length < status.open.length || document.querySelector('.vehicle_checkbox:checked')) return;
+                info.textContent = `Nichts frei (${status.unmet.map(u => u.label).join(', ')}) – überspringe …`;
+                note(`automatisch übersprungen, nichts frei: ${status.unmet.map(u => u.label).join(', ')}`);
+                await sleep(700);
+                skip();
+            })();
+        }
+    }
+
+    // Hauptseite im Spielfenster (passiert nach manchen Weiterleitungen): weiter zum nächsten Eintrag bzw. Fenster schließen
+    function homeInFrame() {
+        if (!inFrame) return;
+        let top;
+        try {
+            top = window.top;
+            if (top.location.pathname !== '/' || typeof top.lightboxClose !== 'function') return;
+        } catch (e) {
+            return;
+        }
+        const mode = top.LSSHelperShared && top.LSSHelperShared.dispatch;
+        if (mode && mode.active) {
+            const url = mode.pendingUrl || (mode.queue.length ? mode.takeNext().url : null);
+            mode.pendingUrl = null;
+            if (mode.note) mode.note('Hauptseite im Fenster – weiter');
+            if (url) {
+                mode.expectUrl = url;
+                return location.replace(url);
+            }
+        }
+        top.lightboxClose();
     }
 
     // Hauptfenster: Tasten des Modus ans offene Fenster weiterreichen (der Fokus liegt oft hier)
@@ -3663,6 +3772,7 @@
         { name: 'dispatchMain', match: /^\/$/, run: dispatchMain },
         { name: 'dispatchKeyRelay', match: /^\/$/, run: dispatchKeyRelay },
         { name: 'dispatchWindow', match: /^\/(missions|vehicles)\/\d+\/?$/, run: dispatchWindow },
+        { name: 'homeInFrame', match: /^\/$/, run: homeInFrame },
         { name: 'buildingInfo', match: /^\/buildings\/\d+\/?$/, run: buildingInfo },
     ];
 

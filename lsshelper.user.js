@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.0
+// @version      0.28.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -2984,6 +2984,9 @@
         return (await demandStatus()).unmet;
     }
 
+    // Zeilen der Fahrzeugauswahl im Einsatzfenster (das Spiel lädt sie teils erst nach dem Öffnen)
+    const freeVehicleRows = () => Array.from(document.querySelectorAll('#vehicle_show_table_all tbody tr, #vehicle_show_table_body_all tr')).filter((row, i, all) => all.indexOf(row) === i);
+
     // Offene Bedarfe des Einsatzfensters und welche davon gerade kein freies Fahrzeug haben
     async function demandStatus() {
         let demands = lastDemands;
@@ -2997,16 +3000,16 @@
             applyPresent(demands, presentVehicles(), 'all');
             demands = demands.filter(d => d.need > 0 && !(d.chance !== undefined && d.chance < settings.minChance));
         }
-        const free = new Set(
-            Array.from(document.querySelectorAll('#vehicle_show_table_all tbody tr'))
-                .filter(row => !row.querySelector('.vehicle_checkbox:checked'))
-                .map(row => {
-                    const el = row.querySelector('[vehicle_type_id]');
-                    return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
-                })
-        );
-        const unmet = demands.filter(d => d.demand && d.demand.types.length && !d.demand.types.some(type => free.has(type))).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
-        return { open: demands, unmet, known: true };
+        // Freie Fahrzeuge: Typnummer und – als zweite Erkennung – der Typname, den das Spiel an der Zeile führt
+        const rows = freeVehicleRows().filter(row => !row.querySelector('.vehicle_checkbox:checked'));
+        const free = new Set(rows.map(row => {
+            const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
+            return el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN;
+        }));
+        const freeNames = new Set(rows.map(row => normalize(row.getAttribute('vehicle_type') || '')).filter(Boolean));
+        const available = demand => demand.types.some(type => free.has(type)) || demand.texts.concat(demand.label || []).some(text => freeNames.has(normalize(text)));
+        const unmet = demands.filter(d => d.demand && d.demand.types.length && !available(d.demand)).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
+        return { open: demands, unmet, known: true, listed: rows.length };
     }
 
     // Startdaten der Hauptseite: das Spiel ruft beim Laden missionMarkerAdd({...}) für jeden Einsatz auf
@@ -3618,6 +3621,14 @@
             (async () => {
                 // Warten, bis die Markierung gerechnet hat (höchstens 5 Sekunden)
                 for (let i = 0; i < 25 && !hotkeyReady; i++) await sleep(200);
+                // … und bis die Fahrzeugliste geladen ist: Zeilenzahl zweimal hintereinander gleich und nicht leer (höchstens 10 Sekunden)
+                let lastCount = -1;
+                for (let i = 0; i < 20; i++) {
+                    const count = freeVehicleRows().length;
+                    if (count > 0 && count === lastCount) break;
+                    lastCount = count;
+                    await sleep(500);
+                }
                 const status = await demandStatus().catch(() => ({ open: [], unmet: [], known: false }));
                 if (lastUnknownNames.length) note(`Fahrzeugname nicht zugeordnet: ${lastUnknownNames.map(n => `„${n}“`).join(', ')}`);
                 if (document.querySelector('.vehicle_checkbox:checked')) return;
@@ -3629,6 +3640,8 @@
                     return skip();
                 }
                 if (!status.open.length || status.unmet.length < status.open.length) return;
+                // Leere Liste heißt evtl. nur „noch nicht geladen“ – dann lieber nicht überspringen
+                if (!status.listed) return note('Fahrzeugliste leer oder nicht geladen – nicht automatisch übersprungen');
                 info.textContent = `Nichts frei (${status.unmet.map(u => u.label).join(', ')}) – überspringe …`;
                 note(`automatisch übersprungen, nichts frei: ${status.unmet.map(u => u.label).join(', ')}`);
                 await sleep(700);

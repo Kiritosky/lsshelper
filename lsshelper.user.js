@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.23.2
+// @version      0.24.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -19,6 +19,7 @@
     const CACHE_TTL = 24 * 60 * 60 * 1000;
 
     const log = (...args) => DEBUG && console.log('[LSS Helper]', ...args);
+    const inFrame = window.top !== window;
 
     /* ------------------------------------------------------------------ *
      * Kern: Einstellungen (⚙ in der Helfer-Leiste)
@@ -42,25 +43,73 @@
         nextTransport: true,
         buildingPersonnel: true,
         buildingExpansions: true,
+        dispatchBacklog: true,
+        dispatchNew: true,
+        dispatchEscalation: true,
+        dispatchTransport: true,
+        dispatchAlliance: false,
+        dispatchPlanned: false,
+        dispatchButtons: true,
+        dispatchKeyNext: 'x',
+        dispatchKeySkip: 's',
     };
-    const SETTINGS_LABELS = {
-        hotkey: 'Taste, die im Einsatzfenster die markierte AAO auswählt (leer = aus)',
-        markName: 'AAO mit Einsatznamen markieren',
-        markVehicles: 'Fahrzeug-AAOs markieren',
-        subtractPresent: 'Bereits alarmierte und angehakte Fahrzeuge abziehen',
-        countForeign: 'Dabei Fahrzeuge anderer Spieler mitzählen',
-        showList: 'Fahrzeugliste in der Leiste anzeigen',
-        openTab: 'AAO-Tab automatisch öffnen',
-        createButton: 'Button „AAO anlegen“ anzeigen',
-        crewButton: 'Menüeintrag und Wachen-Knopf für das Dashboard anzeigen',
-        pulse: 'Markierung pulsieren lassen',
-        colorName: 'Farbe Namens-Treffer',
-        colorVehicles: 'Farbe Fahrzeug-AAOs',
-        minChance: 'Fahrzeuge erst ab dieser Wahrscheinlichkeit (%) markieren und in neue AAOs aufnehmen',
-        nextTransport: 'Nach Krankenhaus-/Zellenwahl automatisch zum nächsten Sprechwunsch (sonst zurück zum Einsatz)',
-        buildingPersonnel: 'Wache: Personalbedarf der Fahrzeuge (Mindest- und Höchstbesatzung) anzeigen',
-        buildingExpansions: 'Wache: Ausbauten oben anzeigen (im Bau mit Restzeit, aktiv, inaktiv, nicht gebaut)',
-    };
+    // Aufbau der Einstellungsseite: [Schlüssel, Titel, Erklärung, abhängig von]
+    const SETTINGS_SECTIONS = [
+        {
+            id: 'dispatch',
+            title: '🚨 Leitstellen-Modus',
+            intro: 'Start über den Knopf über der Einsatzliste. Öffnet Einsätze und Sprechwünsche nacheinander – jedes Ereignis nur einmal. Alarmiert wird immer nur von dir.',
+            items: [
+                ['dispatchBacklog', 'Beim Start offene Einsätze abarbeiten', 'Rote Einsätze und Einsätze mit fehlenden Fahrzeugen'],
+                ['dispatchNew', 'Neue Einsätze öffnen'],
+                ['dispatchEscalation', 'Nachalarmierungen öffnen', 'Wenn neue Fahrzeuge fehlen oder sich ein Einsatz ausbreitet'],
+                ['dispatchTransport', 'Sprechwünsche öffnen', 'Fahrzeuge in Status 5 – vor allen Einsätzen'],
+                ['dispatchAlliance', 'Auch Verbandseinsätze'],
+                ['dispatchPlanned', 'Auch geplante Einsätze'],
+                ['dispatchButtons', 'Knöpfe im Fenster', 'Für die Bedienung ohne Tastatur, z. B. am iPad'],
+                ['dispatchKeyNext', 'Taste: alarmieren & weiter'],
+                ['dispatchKeySkip', 'Taste: überspringen'],
+            ],
+        },
+        {
+            id: 'aao',
+            title: '🎯 AAO-Markierung',
+            items: [
+                ['hotkey', 'Taste: markierte AAO auswählen', 'Leer lassen = aus'],
+                ['markName', 'AAO mit dem Einsatznamen markieren'],
+                ['markVehicles', 'Fahrzeug-AAOs markieren', 'Zahl an der AAO = so oft klicken'],
+                ['subtractPresent', 'Alarmierte und angehakte Fahrzeuge abziehen'],
+                ['countForeign', 'Dabei Fahrzeuge anderer Spieler mitzählen', '', 'subtractPresent'],
+                ['minChance', 'Mindest-Wahrscheinlichkeit in %', 'Seltener gebrauchte Fahrzeuge werden nur genannt, nicht markiert'],
+                ['openTab', 'Reiter mit der Markierung automatisch öffnen'],
+                ['showList', 'Fahrzeugliste in der Helfer-Leiste zeigen'],
+                ['createButton', 'Knopf „AAO anlegen“ zeigen', 'Wenn es keine AAO mit dem Einsatznamen gibt'],
+            ],
+        },
+        {
+            id: 'look',
+            title: '🎨 Darstellung',
+            items: [
+                ['pulse', 'Markierung pulsieren lassen'],
+                ['colorName', 'Farbe für Namens-Treffer'],
+                ['colorVehicles', 'Farbe für Fahrzeug-AAOs'],
+            ],
+        },
+        {
+            id: 'transport',
+            title: '🏥 Sprechwünsche',
+            items: [['nextTransport', 'Nach Krankenhaus-/Zellenwahl weiter', 'Zum nächsten Sprechwunsch, sonst zurück zum Einsatz']],
+        },
+        {
+            id: 'buildings',
+            title: '🏠 Wachen & Dashboard',
+            items: [
+                ['crewButton', 'Dashboard im Profilmenü und auf jeder Wache'],
+                ['buildingPersonnel', 'Personalbedarf auf der Wache', 'Mindest- und Höchstbesatzung aller Fahrzeuge'],
+                ['buildingExpansions', 'Ausbauten oben auf der Wache', 'Im Bau mit Restzeit, aktiv, inaktiv, nicht gebaut'],
+            ],
+        },
+    ];
     const settings = Object.assign({}, DEFAULTS);
     try {
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
@@ -617,6 +666,33 @@
             #lsshelper-dash input[type="number"] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
             .lsshelper-menu-badge { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: #c62828; color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
+            #lsshelper-dispatch-toggle { margin-left: 4px; }
+            #lsshelper-dispatch-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin: -5px -5px 6px; background: #1f2229; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
+            #lsshelper-dispatch-bar .lsshelper-dispatch-info { flex: 1; min-width: 160px; font-weight: 700; }
+            #lsshelper-dispatch-bar .lsshelper-dispatch-warn { color: #ffb74d; }
+            #lsshelper-dispatch-bar .btn { min-height: 34px; }
+            details.lsshelper-set-section { padding-bottom: 4px; }
+            .lsshelper-set-summary { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; cursor: pointer; list-style: none; }
+            .lsshelper-set-summary::-webkit-details-marker { display: none; }
+            .lsshelper-set-summary::before { content: '▸'; color: var(--muted); transition: transform 0.15s; }
+            details[open] > .lsshelper-set-summary::before { transform: rotate(90deg); }
+            details[open] > .lsshelper-set-summary { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+            .lsshelper-set-summary small { margin-left: auto; color: var(--muted); }
+            .lsshelper-set-intro { padding: 6px 2px 8px; color: var(--muted); }
+            #lsshelper-dash label.lsshelper-set-row { display: flex; align-items: center; gap: 12px; margin: 0; padding: 9px 2px; border-bottom: 1px solid var(--line); font-weight: 400; color: var(--text); cursor: pointer; }
+            #lsshelper-dash label.lsshelper-set-row:last-of-type { border-bottom: none; }
+            .lsshelper-set-text { flex: 1; display: flex; flex-direction: column; }
+            .lsshelper-set-title { font-size: 13px; }
+            .lsshelper-set-text small { color: var(--muted); font-size: 11px; }
+            .lsshelper-set-off { opacity: 0.4; }
+            #lsshelper-dash input.lsshelper-switch { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 42px; height: 24px; margin: 0; border-radius: 12px; background: var(--line); cursor: pointer; transition: background 0.15s; }
+            #lsshelper-dash input.lsshelper-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: left 0.15s; }
+            #lsshelper-dash input.lsshelper-switch:checked { background: var(--ok); }
+            #lsshelper-dash input.lsshelper-switch:checked::after { left: 20px; }
+            #lsshelper-dash input.lsshelper-set-number { width: 64px; padding: 3px 6px; }
+            #lsshelper-dash input.lsshelper-set-color { width: 42px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+            #lsshelper-dash input.lsshelper-dash-key { width: 42px; height: 28px; font-size: 14px; }
+            #lsshelper-dash pre.lsshelper-set-diag { white-space: pre-wrap; margin: 8px 0 0; padding: 8px; border-radius: 6px; background: var(--bg); color: var(--text); font-size: 11px; max-height: 300px; overflow: auto; }
             #lsshelper-settings { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-settings label { display: block; font-weight: normal; margin: 2px 0; }
             #lsshelper-settings input[type="number"] { width: 60px; color: #000; }
@@ -626,7 +702,7 @@
             }
             .lsshelper-badge { background: #000; color: ${settings.colorVehicles}; border: 1px solid #fff; border-radius: 8px; padding: 0 5px; margin-right: 4px; font-weight: bold; }
             .lsshelper-filled { box-shadow: 0 0 0 3px #ff00d4 !important; }
-            .lsshelper-tab { box-shadow: inset 0 -4px 0 ${settings.colorName} !important; }
+            #aao-tabs .lsshelper-tab { box-shadow: inset 0 -4px 0 ${settings.colorName} !important; }
             #lsshelper-panel { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; }
             #lsshelper-report { margin: 5px 0; padding: 6px 8px; border: 1px solid #888; border-radius: 4px; font-size: 12px; max-height: 300px; overflow-y: auto; }
             .lsshelper-report-row { padding: 2px 0; border-top: 1px solid rgba(128, 128, 128, 0.3); }
@@ -2353,39 +2429,104 @@
 
     /* ---------------- Werkzeug: Einstellungen ---------------- */
 
+    const SETTINGS_OPEN_KEY = 'lsshelper_settings_open';
+
     function renderSettingsTool(ctx) {
-        ctx.status('Einstellungen gelten ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');
-        const card = dashCard(ctx.body, 'Einstellungen');
-        const inputs = Object.keys(DEFAULTS).map(key => {
-            const row = dashEl('label', 'lsshelper-dash-row');
+        ctx.status('Änderungen werden sofort gespeichert und gelten ab dem nächsten geöffneten Fenster.');
+        const opened = new Set(readJsonSafe(SETTINGS_OPEN_KEY, ['dispatch']));
+        const counters = [];
+        const save = () => {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+            counters.forEach(update => update());
+            ctx.status('✓ Gespeichert – gilt ab dem nächsten geöffneten Fenster.');
+        };
+        const rowsByKey = {};
+        const refreshDependencies = () =>
+            SETTINGS_SECTIONS.forEach(section =>
+                section.items.forEach(([key, , , dependsOn]) => {
+                    if (dependsOn && rowsByKey[key]) rowsByKey[key].classList.toggle('lsshelper-set-off', !settings[dependsOn]);
+                })
+            );
+
+        const control = key => {
+            const type = typeof DEFAULTS[key];
             const input = dashEl('input');
-            input.dataset.key = key;
-            input.type = typeof DEFAULTS[key] === 'boolean' ? 'checkbox' : typeof DEFAULTS[key] === 'number' ? 'number' : /^#/.test(DEFAULTS[key]) ? 'color' : 'text';
-            if (input.type === 'checkbox') input.checked = settings[key];
-            else input.value = settings[key];
-            if (input.type === 'text') {
+            if (type === 'boolean') {
+                input.type = 'checkbox';
+                input.className = 'lsshelper-switch';
+                input.checked = settings[key];
+                input.addEventListener('change', () => ((settings[key] = input.checked), save(), refreshDependencies()));
+            } else if (type === 'number') {
+                input.type = 'number';
+                input.className = 'lsshelper-set-number';
+                input.value = settings[key];
+                input.addEventListener('change', () => ((settings[key] = Number(input.value) || 0), save()));
+            } else if (/^#/.test(DEFAULTS[key])) {
+                input.type = 'color';
+                input.className = 'lsshelper-set-color';
+                input.value = settings[key];
+                input.addEventListener('change', () => ((settings[key] = input.value), save()));
+            } else {
+                // Tasten: ein Zeichen, Groß/Klein egal
+                input.type = 'text';
                 input.maxLength = 1;
                 input.className = 'lsshelper-dash-key';
+                input.value = settings[key];
+                input.addEventListener('input', () => ((settings[key] = input.value.toLowerCase()), save()));
             }
-            row.append(input, dashEl('span', '', SETTINGS_LABELS[key]));
-            card.append(row);
             return input;
+        };
+
+        SETTINGS_SECTIONS.forEach(section => {
+            const box = dashEl('details', 'lsshelper-dash-card lsshelper-set-section');
+            box.open = opened.has(section.id);
+            box.addEventListener('toggle', () => {
+                if (box.open) opened.add(section.id);
+                else opened.delete(section.id);
+                localStorage.setItem(SETTINGS_OPEN_KEY, JSON.stringify(Array.from(opened)));
+            });
+            const summary = dashEl('summary', 'lsshelper-set-summary');
+            const switches = section.items.filter(([key]) => typeof DEFAULTS[key] === 'boolean').map(([key]) => key);
+            const count = dashEl('small');
+            const updateCount = () => (count.textContent = switches.length ? `${switches.filter(key => settings[key]).length} von ${switches.length} an` : '');
+            updateCount();
+            counters.push(updateCount);
+            summary.append(dashEl('span', 'lsshelper-dash-card-title', section.title), count);
+            box.append(summary);
+            if (section.intro) box.append(dashEl('div', 'lsshelper-set-intro', section.intro));
+            section.items.forEach(([key, title, hint]) => {
+                const row = dashEl('label', 'lsshelper-set-row');
+                const text = dashEl('span', 'lsshelper-set-text');
+                text.append(dashEl('span', 'lsshelper-set-title', title));
+                if (hint) text.append(dashEl('small', '', hint));
+                row.append(text, control(key));
+                rowsByKey[key] = row;
+                box.append(row);
+            });
+            if (section.id === 'dispatch') box.append(dispatchDiagnoseButton());
+            ctx.body.append(box);
         });
-        card.head.append(
+        refreshDependencies();
+
+        const footer = dashCard(ctx.body, 'Zurücksetzen');
+        footer.append(dashEl('div', 'lsshelper-dash-empty', 'Setzt alle Einstellungen auf die Standardwerte zurück.'));
+        footer.head.append(
             dashButton('Standard wiederherstellen', 'lsshelper-btn-quiet', () => {
+                if (!confirm('Alle Einstellungen auf Standard zurücksetzen?')) return;
                 localStorage.removeItem(SETTINGS_KEY);
                 Object.assign(settings, DEFAULTS);
                 ctx.open('settings');
-            }),
-            dashButton('Speichern', 'lsshelper-btn-primary', () => {
-                inputs.forEach(input => {
-                    settings[input.dataset.key] = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value) : input.value.toLowerCase();
-                });
-                localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-                ctx.status('Gespeichert. Gilt ab dem nächsten geöffneten Einsatz- oder Wachenfenster.');
             })
         );
     }
+
+    const readJsonSafe = (key, fallback) => {
+        try {
+            return JSON.parse(localStorage.getItem(key) || 'null') || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    };
 
     const DASH_TOOLS = [
         { id: 'stations', title: 'Wachen', render: renderStationsTool },
@@ -2544,6 +2685,20 @@
         if (!afterChoice && !(document.querySelector('.alert-success') && !document.querySelector('[data-transport-request="true"]'))) return;
         const next = document.getElementById('next-vehicle-fms-5');
         const mission = document.querySelector('a.btn.btn-success[href^="/missions/"]');
+        // Im Leitstellen-Modus bestimmt dessen Warteschlange, was als Nächstes kommt
+        let mode = null;
+        try {
+            mode = window.top.LSSHelperShared && window.top.LSSHelperShared.dispatch;
+        } catch (e) {
+            /* fremder Ursprung */
+        }
+        if (afterChoice && mode && mode.active) {
+            return setTimeout(() => {
+                const item = mode.takeNext();
+                if (item) location.href = item.url;
+                else if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
+            }, 300);
+        }
         setTimeout(() => {
             if (next) return next.click();
             if (!afterChoice) return;
@@ -2629,6 +2784,394 @@
     }
 
     /* ------------------------------------------------------------------ *
+     * Feature: Leitstellen-Modus
+     * Hauptfenster: merkt sich Einsätze und Sprechwünsche, sammelt neue Ereignisse in einer Warteschlange
+     * und öffnet sie nacheinander. Fenster (Einsatz/Fahrzeug): Leiste mit „alarmieren & weiter“ und „überspringen“.
+     * Alarmiert wird nie automatisch.
+     * ------------------------------------------------------------------ */
+
+    // Spielfunktion umhüllen: erst das Spiel, dann unser Rückruf – ein Fehler bei uns darf das Spiel nie stören
+    function hookGame(name, after) {
+        const original = window[name];
+        if (typeof original !== 'function') return false;
+        window[name] = function (...args) {
+            const result = original.apply(this, args);
+            try {
+                after(...args);
+            } catch (e) {
+                console.error(`[LSS Helper] ${name}`, e);
+            }
+            return result;
+        };
+        return true;
+    }
+
+    // Tippt man gerade Text? Häkchen und Knöpfe zählen nicht – nach dem Anhaken eines Fahrzeugs sollen die Tasten weiter gehen
+    const typingIn = target =>
+        !!(target && target.closest && (target.closest('textarea, select, [contenteditable]') || (target.matches('input') && !/^(checkbox|radio|button|submit)$/i.test(target.type))));
+
+    // „Fehlende Fahrzeuge: 2 LF, 1 RW“ -> { LF: 2, RW: 1 }
+    function parseMissing(text) {
+        const result = {};
+        String(text || '')
+            .replace(/^[^:]*:/, '')
+            .split(',')
+            .forEach(part => {
+                const match = part.trim().match(/^(\d+)\s+(.+)$/);
+                if (match) result[match[2].trim()] = (result[match[2].trim()] || 0) + parseInt(match[1]);
+                else if (part.trim()) result[part.trim()] = (result[part.trim()] || 0) + 1;
+            });
+        return result;
+    }
+
+    const DISPATCH_LISTS = { mission_list: 'own', mission_list_alliance: 'alliance', mission_list_sicherheitswache: 'planned', mission_list_sicherheitswache_alliance: 'planned', mission_list_krankentransporte: 'own' };
+    const panelList = panel => (panel && panel.parentElement ? DISPATCH_LISTS[panel.parentElement.id] || 'other' : null);
+    const listAllowed = list => list === 'own' || (list === 'alliance' && settings.dispatchAlliance) || (list === 'planned' && settings.dispatchPlanned);
+    // Rot 0, gelb 1, grün 2 – aus der Klasse des Spiels (mission_panel_red/yellow/green)
+    function panelState(panel) {
+        const box = panel.querySelector('[class*="mission_panel_"]') || panel;
+        const match = box.className.match(/mission_panel_(red|yellow|green)/);
+        return match ? { red: 0, yellow: 1, green: 2 }[match[1]] : null;
+    }
+    const panelMissing = panel => {
+        const el = panel.querySelector('[id^="mission_missing_"]');
+        return el && el.offsetParent !== null ? el.textContent.trim() : el ? el.textContent.trim() : '';
+    };
+
+    function dispatchMain() {
+        if (inFrame || !document.getElementById('missions-panel-body')) return;
+        addStyles();
+        const mode = (shared.dispatch = shared.dispatch || { active: false, queue: [], opened: new Set(), log: [], pendingUrl: null, opened_missing: {}, fms: {} });
+        const known = new Map();
+        const note = text => {
+            mode.log.unshift(`${new Date().toLocaleTimeString('de-DE')} ${text}`);
+            mode.log.length = Math.min(mode.log.length, 30);
+        };
+        document.querySelectorAll('#missions-panel-body .missionSideBarEntry').forEach(panel => {
+            const id = panel.getAttribute('mission_id') || panel.id.replace('mission_', '');
+            known.set(id, { state: panelState(panel), missing: panelMissing(panel) });
+        });
+
+        // Ist gerade ein Spielfenster offen? (sichtbares iframe mit einer Spielseite)
+        const windowOpen = () =>
+            Array.from(document.querySelectorAll('iframe')).some(frame => {
+                if (!frame.getClientRects().length || frame.offsetWidth < 200) return false;
+                try {
+                    return /^\/(missions|vehicles|buildings|aaos|profile|credits|verband|alliance)/.test(frame.contentWindow.location.pathname);
+                } catch (e) {
+                    return false;
+                }
+            });
+
+        const button = document.createElement('a');
+        button.href = '#';
+        button.id = 'lsshelper-dispatch-toggle';
+        button.className = 'btn btn-xs btn-success';
+        const render = () => {
+            button.className = `btn btn-xs ${mode.active ? 'btn-danger' : 'btn-success'}`;
+            button.textContent = mode.active ? `■ Leitstellen-Modus stoppen${mode.queue.length ? ` (${mode.queue.length} warten)` : ''}` : '▶ Leitstellen-Modus';
+        };
+
+        const enqueue = item => {
+            if (!mode.active || mode.opened.has(item.sig) || mode.queue.some(q => q.sig === item.sig)) return;
+            // Pro Einsatz bzw. Fahrzeug nur ein Eintrag in der Schlange – der neuere Anlass ersetzt den älteren
+            mode.queue = mode.queue.filter(q => q.key !== item.key);
+            mode.queue.push(item);
+            // Sprechwünsche zuerst, dann Nachalarmierungen, dann neue/offene Einsätze; sonst in Ankunftsreihenfolge
+            mode.queue.sort((a, b) => a.priority - b.priority || a.at - b.at);
+            note(`+ ${item.label}`);
+            render();
+            setTimeout(processQueue, 300);
+        };
+        const drop = key => {
+            const before = mode.queue.length;
+            mode.queue = mode.queue.filter(q => q.key !== key);
+            if (before !== mode.queue.length) render();
+        };
+        // Nimmt den nächsten Eintrag aus der Schlange und merkt ihn als geöffnet (wird nie wieder geöffnet)
+        mode.takeNext = () => {
+            const item = mode.queue.shift();
+            if (item) {
+                mode.opened.add(item.sig);
+                if (item.missing) mode.opened_missing[item.key] = item.missing;
+                note(`→ ${item.label}`);
+            }
+            render();
+            return item || null;
+        };
+        mode.count = () => mode.queue.length;
+        const processQueue = () => {
+            if (!mode.active || windowOpen() || typeof window.lightboxOpen !== 'function') return;
+            const url = mode.pendingUrl || (mode.queue.length ? mode.takeNext().url : null);
+            mode.pendingUrl = null;
+            if (url) window.lightboxOpen(url);
+        };
+        mode.stop = () => {
+            mode.active = false;
+            mode.queue = [];
+            mode.pendingUrl = null;
+            note('Modus gestoppt');
+            render();
+        };
+
+        const missionItem = (id, reason, missing) => {
+            const panel = document.getElementById(`mission_${id}`);
+            const caption = panel && panel.querySelector('[id^="mission_caption_"]');
+            const name = caption ? caption.textContent.trim() : `Einsatz ${id}`;
+            const labels = { backlog: 'offen', new: 'neu', escalation: 'Nachalarmierung' };
+            return {
+                key: `m${id}`,
+                sig: reason === 'escalation' ? `m${id}|${JSON.stringify(missing)}` : `m${id}|start`,
+                url: `/missions/${id}`,
+                type: 'mission',
+                id,
+                missing,
+                priority: reason === 'escalation' ? 1 : 2,
+                at: Date.now(),
+                label: `${name} (${labels[reason]})`,
+            };
+        };
+        // Neue fehlende Fahrzeuge, die beim letzten Öffnen noch nicht gefehlt haben?
+        const missingGrew = (id, missing) => {
+            const before = mode.opened_missing[`m${id}`] || {};
+            return Object.entries(missing).some(([name, count]) => count > (before[name] || 0));
+        };
+
+        hookGame('missionMarkerAdd', marker => {
+            if (!marker || marker.id === undefined) return;
+            const id = String(marker.id);
+            const prev = known.get(id);
+            const cur = { state: marker.vehicle_state, missing: marker.missing_text || '', type: `${marker.mtid}|${marker.additive_overlays || ''}|${marker.overlay_index || ''}` };
+            known.set(id, cur);
+            if (!mode.active) return;
+            const list = panelList(document.getElementById(`mission_${id}`));
+            if (!listAllowed(list)) return;
+            // Alles da und nichts fehlt: wartende Einträge zu diesem Einsatz sind erledigt
+            if (cur.state === 2 && !cur.missing) return drop(`m${id}`);
+            if (!prev) {
+                if (settings.dispatchNew) enqueue(missionItem(id, 'new', parseMissing(cur.missing)));
+                return;
+            }
+            if (!settings.dispatchEscalation) return;
+            const missing = parseMissing(cur.missing);
+            const spread = prev.type && cur.type !== prev.type && !/^undefined/.test(prev.type);
+            if ((cur.missing && cur.missing !== prev.missing && missingGrew(id, missing)) || spread) enqueue(missionItem(id, 'escalation', spread ? Object.assign({ Ausbreitung: Date.now() }, missing) : missing));
+        });
+        hookGame('missionDelete', id => {
+            known.delete(String(id));
+            drop(`m${id}`);
+        });
+        hookGame('radioMessage', message => {
+            if (!message || message.type !== 'vehicle_fms' || message.user_id !== window.user_id) return;
+            const was = mode.fms[message.id];
+            mode.fms[message.id] = message.fms_real;
+            if (message.fms_real !== 5) return drop(`v${message.id}`);
+            // Ein Sprechwunsch zählt einmal, bis das Fahrzeug Status 5 wieder verlässt
+            if (was !== 5 && mode.active && settings.dispatchTransport) {
+                enqueue({ key: `v${message.id}`, sig: `v${message.id}|${Date.now()}`, url: `/vehicles/${message.id}`, type: 'vehicle', id: message.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${message.caption || message.id}` });
+            }
+        });
+        // Wird ein Fenster geschlossen, kommt das nächste dran
+        hookGame('lightboxClose', () => setTimeout(processQueue, 500));
+        setInterval(processQueue, 3000);
+
+        const start = async () => {
+            mode.active = true;
+            mode.queue = [];
+            mode.opened = new Set();
+            mode.opened_missing = {};
+            note('Modus gestartet');
+            if (settings.dispatchBacklog) {
+                document.querySelectorAll('#missions-panel-body .missionSideBarEntry').forEach(panel => {
+                    if (!listAllowed(panelList(panel)) || panel.style.display === 'none' || panel.classList.contains('mission_deleted')) return;
+                    const id = panel.getAttribute('mission_id') || panel.id.replace('mission_', '');
+                    const state = panelState(panel);
+                    const missing = panelMissing(panel);
+                    if (state === 0 || (state !== 2 && missing)) enqueue(missionItem(id, 'backlog', parseMissing(missing)));
+                });
+            }
+            if (settings.dispatchTransport) {
+                const vehicles = await fetchJson('/api/vehicles').catch(() => []);
+                (Array.isArray(vehicles) ? vehicles : []).forEach(v => {
+                    mode.fms[v.id] = v.fms_real;
+                    if (v.fms_real === 5) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
+                });
+            }
+            render();
+            processQueue();
+        };
+        button.addEventListener('click', e => {
+            e.preventDefault();
+            if (mode.active) mode.stop();
+            else start();
+        });
+        render();
+        const selections = document.querySelectorAll('.missions-panel-main .mission_selection');
+        const anchor = selections[selections.length - 1];
+        if (anchor) anchor.after(button);
+        else document.getElementById('missions-panel-body').before(button);
+    }
+
+    // Leitstellen-Modus im Fenster: Leiste, Tasten und Knöpfe
+    function dispatchWindow() {
+        if (!inFrame) return;
+        let mode;
+        try {
+            mode = window.top.LSSHelperShared && window.top.LSSHelperShared.dispatch;
+        } catch (e) {
+            return;
+        }
+        if (!mode || !mode.active) return;
+        // Nach dem Alarmieren: zum vorgemerkten Ziel (z. B. Sprechwunsch) weiter
+        if (mode.pendingUrl) {
+            const url = mode.pendingUrl;
+            mode.pendingUrl = null;
+            return location.replace(url);
+        }
+        addStyles();
+        const isMission = /^\/missions\/\d+/.test(location.pathname);
+        const close = () => {
+            if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
+            else if (window.top.lightboxClose) window.top.lightboxClose();
+        };
+        const flash = text => {
+            info.textContent = text;
+            info.classList.add('lsshelper-dispatch-warn');
+            setTimeout(() => ((info.classList.remove('lsshelper-dispatch-warn')), update()), 2500);
+        };
+        const skip = () => {
+            const next = mode.takeNext();
+            if (next) location.href = next.url;
+            else close();
+        };
+        const alarmNext = () => {
+            const alarm = document.getElementById('mission_alarm_btn');
+            if (!isMission || !alarm) return skip();
+            if (!document.querySelector('.vehicle_checkbox:checked')) return flash('Kein Fahrzeug angehakt – erst auswählen (oder überspringen).');
+            const next = mode.takeNext();
+            const field = document.getElementById('next_mission_id');
+            // Nächster Einsatz: über das Feld des Spiels; sonst (Sprechwunsch) nach dem Alarmieren selbst hinspringen
+            if (next && next.type === 'mission' && field) field.value = next.id;
+            else if (next) mode.pendingUrl = next.url;
+            alarm.click();
+        };
+        const stop = () => {
+            mode.stop();
+            bar.remove();
+        };
+
+        const bar = document.createElement('div');
+        bar.id = 'lsshelper-dispatch-bar';
+        const info = document.createElement('span');
+        info.className = 'lsshelper-dispatch-info';
+        const update = () => (info.textContent = `🚨 Leitstellen-Modus · ${mode.count()} warten`);
+        update();
+        setInterval(update, 2000);
+        bar.append(info);
+        const key = k => (k ? ` (${k.toUpperCase()})` : '');
+        if (settings.dispatchButtons) {
+            const add = (text, cls, onTap) => {
+                const btn = document.createElement('a');
+                btn.href = '#';
+                btn.className = `btn btn-sm ${cls}`;
+                btn.textContent = text;
+                btn.addEventListener('click', e => {
+                    e.preventDefault();
+                    onTap();
+                });
+                bar.append(btn);
+            };
+            if (isMission) add(`AAO${key(settings.hotkey)}`, 'btn-default', () => triggerHotkey());
+            if (isMission) add(`Alarm & weiter${key(settings.dispatchKeyNext)}`, 'btn-success', alarmNext);
+            add(`Überspringen${key(settings.dispatchKeySkip)}`, 'btn-default', skip);
+            add('■', 'btn-danger', stop);
+        }
+        document.body.prepend(bar);
+
+        const handled = e => !e.ctrlKey && !e.metaKey && !e.altKey && e.key && !typingIn(e.target);
+        const onKey = k => {
+            if (settings.dispatchKeyNext && k === settings.dispatchKeyNext && isMission) return alarmNext(), true;
+            if (settings.dispatchKeySkip && k === settings.dispatchKeySkip) return skip(), true;
+            return false;
+        };
+        window.LSSHelper.dispatchKey = onKey;
+        document.addEventListener(
+            'keydown',
+            e => {
+                if (handled(e) && onKey(e.key.toLowerCase())) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                }
+            },
+            true
+        );
+    }
+
+    // Hauptfenster: Tasten des Modus ans offene Fenster weiterreichen (der Fokus liegt oft hier)
+    function dispatchKeyRelay() {
+        if (inFrame) return;
+        document.addEventListener(
+            'keydown',
+            e => {
+                const mode = shared.dispatch;
+                if (!mode || !mode.active || e.ctrlKey || e.metaKey || e.altKey || !e.key || typingIn(e.target)) return;
+                const k = e.key.toLowerCase();
+                if (k !== settings.dispatchKeyNext && k !== settings.dispatchKeySkip) return;
+                const done = Array.from(document.querySelectorAll('iframe')).some(frame => {
+                    try {
+                        const inner = frame.contentWindow;
+                        return frame.getClientRects().length > 0 && inner.LSSHelper && inner.LSSHelper.dispatchKey && inner.LSSHelper.dispatchKey(k);
+                    } catch (err) {
+                        return false;
+                    }
+                });
+                if (done) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                }
+            },
+            true
+        );
+    }
+
+    // Prüfanzeige für die Einstellungen: was der Modus in der Einsatzliste erkennt
+    function dispatchDiagnoseButton() {
+        const wrap = dashEl('div', 'lsshelper-set-intro');
+        const out = dashEl('pre', 'lsshelper-set-diag');
+        out.hidden = true;
+        wrap.append(
+            dashButton('Prüfanzeige', '', () => {
+                const lines = [];
+                const hooks = ['missionMarkerAdd', 'missionDelete', 'radioMessage', 'lightboxOpen', 'lightboxClose'].map(name => `${name} ${typeof window[name] === 'function' ? '✓' : '✗'}`);
+                lines.push(`Spielfunktionen: ${hooks.join(' · ')}`);
+                const panels = Array.from(document.querySelectorAll('#missions-panel-body .missionSideBarEntry'));
+                const byList = {};
+                panels.forEach(panel => {
+                    const list = panel.parentElement ? panel.parentElement.id : '?';
+                    const entry = (byList[list] = byList[list] || { total: 0, red: 0, yellow: 0, green: 0, unknown: 0, missing: 0 });
+                    entry.total++;
+                    const state = panelState(panel);
+                    entry[state === 0 ? 'red' : state === 1 ? 'yellow' : state === 2 ? 'green' : 'unknown']++;
+                    if (panelMissing(panel)) entry.missing++;
+                });
+                if (!panels.length) lines.push('Keine Einsätze gefunden (die Prüfung im Hauptfenster öffnen).');
+                Object.entries(byList).forEach(([list, e]) =>
+                    lines.push(`${list} → ${DISPATCH_LISTS[list] || 'unbekannt'}: ${e.total} Einsätze · rot ${e.red} · gelb ${e.yellow} · grün ${e.green} · Status unbekannt ${e.unknown} · mit fehlenden Fahrzeugen ${e.missing}`)
+                );
+                const example = panels[0];
+                if (example) lines.push(`Beispiel-Klassen: ${(example.querySelector('[class*="panel"]') || example).className}`);
+                const mode = shared.dispatch;
+                lines.push(`Modus: ${mode && mode.active ? `aktiv, ${mode.queue.length} warten` : 'aus'}`);
+                if (mode && mode.log.length) lines.push('Letzte Ereignisse:', ...mode.log.slice(0, 15));
+                out.textContent = lines.join('\n');
+                out.hidden = false;
+            }),
+            out
+        );
+        return wrap;
+    }
+
+    /* ------------------------------------------------------------------ *
      * Feature-Register: neue Features hier eintragen
      * ------------------------------------------------------------------ */
 
@@ -2642,6 +3185,9 @@
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
         { name: 'nextTransport', match: /^\/vehicles\/\d+/, run: nextTransport },
+        { name: 'dispatchMain', match: /^\/$/, run: dispatchMain },
+        { name: 'dispatchKeyRelay', match: /^\/$/, run: dispatchKeyRelay },
+        { name: 'dispatchWindow', match: /^\/(missions|vehicles)\/\d+\/?$/, run: dispatchWindow },
         { name: 'buildingInfo', match: /^\/buildings\/\d+\/?$/, run: buildingInfo },
     ];
 

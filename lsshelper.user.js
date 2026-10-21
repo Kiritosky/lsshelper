@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.3
+// @version      0.28.4
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -887,42 +887,75 @@
     // „THW nur als Ersatz“: angehakte THW-Fahrzeuge gegen freie, gleichwertige Fahrzeuge anderer Wachen tauschen.
     // Gleichwertig = passt zu allen Bedarfen dieses Einsatzes, für die das THW-Fahrzeug infrage kommt.
     const RESERVE_BUILDING_TYPES = [9];
+    const RESERVE_KEY = 'lsshelper_reserve_vehicles';
+    const RESERVE_TTL = 6 * 60 * 60 * 1000;
     let reserveBusy = false;
+    let reserveLoading = null;
+    // Fahrzeuge von THW-Wachen (IDs); 6 Stunden gemerkt, damit das Tauschen ohne Ladepause geht
+    function reserveVehicleIds(forceRefresh) {
+        let cached = null;
+        try {
+            cached = JSON.parse(localStorage.getItem(RESERVE_KEY) || 'null');
+        } catch (e) {
+            /* neu laden */
+        }
+        if (forceRefresh || !cached || Date.now() - cached.t > RESERVE_TTL) {
+            reserveLoading =
+                reserveLoading ||
+                loadBasics()
+                    .then(({ buildings, vehicles }) => {
+                        const reserveBuildings = new Set(buildings.filter(b => RESERVE_BUILDING_TYPES.includes(b.building_type)).map(b => b.id));
+                        const ids = vehicles.filter(v => reserveBuildings.has(v.building_id)).map(v => String(v.id));
+                        localStorage.setItem(RESERVE_KEY, JSON.stringify({ t: Date.now(), ids }));
+                        return new Set(ids);
+                    })
+                    .catch(() => new Set(cached ? cached.ids : []))
+                    .finally(() => (reserveLoading = null));
+            if (!cached) return reserveLoading;
+        }
+        return Promise.resolve(new Set(cached.ids));
+    }
+
+    // Reine Prüfung ohne Klicks: Paare [THW-Fahrzeug, Ersatz] für alle angehakten THW-Fahrzeuge mit freiem Ersatz
+    function reserveSwaps(reserveIds) {
+        const list = Array.from(document.querySelectorAll('#vehicle_show_table_all tbody tr, #vehicle_show_table_body_all tr'))
+            .filter((row, i, all) => all.indexOf(row) === i)
+            .map(row => {
+                const box = row.querySelector('.vehicle_checkbox');
+                const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
+                return box && { box, type: el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN, reserve: reserveIds.has(String(box.value)) };
+            })
+            .filter(Boolean);
+        // Bedarfe des Einsatzes (sonst alle bekannten), die einen Fahrzeugtyp abdecken
+        const pool = (lastAllDemands || []).map(d => d.demand).filter(Boolean);
+        const demandsFor = type => {
+            const own = pool.filter(d => d.types.includes(type));
+            return own.length ? own : DEMANDS.filter(d => d.types.includes(type));
+        };
+        const used = new Set();
+        const pairs = [];
+        list.filter(r => r.box.checked && r.reserve).forEach(r => {
+            const demands = demandsFor(r.type);
+            if (!demands.length) return;
+            // Liste ist nach Entfernung sortiert: das erste passende ist das nächstgelegene
+            const alt = list.find(a => !a.box.checked && !a.reserve && !used.has(a) && demands.every(d => d.types.includes(a.type)));
+            if (!alt) return;
+            used.add(alt);
+            pairs.push([r.box, alt.box]);
+        });
+        return pairs;
+    }
+
     async function preferNonReserve() {
         if (!settings.reserveThw || reserveBusy) return 0;
         reserveBusy = true;
         try {
-            const { buildings, vehicles } = await loadBasics().catch(() => ({ buildings: [], vehicles: [] }));
-            const buildingType = Object.fromEntries(buildings.map(b => [b.id, b.building_type]));
-            const reserveVehicle = Object.fromEntries(vehicles.map(v => [String(v.id), RESERVE_BUILDING_TYPES.includes(buildingType[v.building_id])]));
-            const list = Array.from(document.querySelectorAll('#vehicle_show_table_all tbody tr, #vehicle_show_table_body_all tr'))
-                .filter((row, i, all) => all.indexOf(row) === i)
-                .map(row => {
-                    const box = row.querySelector('.vehicle_checkbox');
-                    const el = row.matches('[vehicle_type_id]') ? row : row.querySelector('[vehicle_type_id]');
-                    return box && { box, type: el ? parseInt(el.getAttribute('vehicle_type_id')) : NaN, reserve: !!reserveVehicle[box.value] };
-                })
-                .filter(Boolean);
-            // Bedarfe des Einsatzes (sonst alle bekannten), die einen Fahrzeugtyp abdecken
-            const pool = (lastAllDemands || []).map(d => d.demand).filter(Boolean);
-            const demandsFor = type => {
-                const own = pool.filter(d => d.types.includes(type));
-                return own.length ? own : DEMANDS.filter(d => d.types.includes(type));
-            };
-            const used = new Set();
-            let swaps = 0;
-            list.filter(r => r.box.checked && r.reserve).forEach(r => {
-                const demands = demandsFor(r.type);
-                if (!demands.length) return;
-                // Liste ist nach Entfernung sortiert: das erste passende ist das nächstgelegene
-                const alt = list.find(a => !a.box.checked && !a.reserve && !used.has(a) && demands.every(d => d.types.includes(a.type)));
-                if (!alt) return;
-                used.add(alt);
-                r.box.click();
-                alt.box.click();
-                swaps++;
+            const pairs = reserveSwaps(await reserveVehicleIds());
+            pairs.forEach(([reserve, alt]) => {
+                reserve.click();
+                alt.click();
             });
-            return swaps;
+            return pairs.length;
         } finally {
             reserveBusy = false;
         }
@@ -938,6 +971,34 @@
             },
             true
         );
+        // Alarmieren-Knöpfe des Spiels: ist noch ein THW-Fahrzeug mit freiem Ersatz angehakt, erst tauschen, dann alarmieren
+        let passThrough = false;
+        document.addEventListener(
+            'click',
+            e => {
+                const btn = e.target.closest && e.target.closest('#mission_alarm_btn, .alert_next, .alert_next_alliance, .alert_notify_alliance');
+                if (!btn || passThrough || !settings.reserveThw) return;
+                let cached = null;
+                try {
+                    cached = JSON.parse(localStorage.getItem(RESERVE_KEY) || 'null');
+                } catch (err) {
+                    /* ohne Liste kein Tausch */
+                }
+                if (!cached || !reserveSwaps(new Set(cached.ids)).length) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                preferNonReserve().then(() =>
+                    setTimeout(() => {
+                        passThrough = true;
+                        btn.click();
+                        passThrough = false;
+                    }, 400)
+                );
+            },
+            true
+        );
+        // Liste der THW-Fahrzeuge bei Bedarf im Hintergrund auffrischen (höchstens alle 6 Stunden)
+        reserveVehicleIds();
     }
 
     // Liefert true, wenn die Taste hier etwas auslöst (auch vom Hauptfenster aus aufrufbar)

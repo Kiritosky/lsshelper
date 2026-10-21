@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.24.2
+// @version      0.25.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -53,6 +53,15 @@
         dispatchKeyNext: 'd',
         dispatchKeySkip: 'f',
         dispatchKeyShare: 'g',
+        tcCrew: true,
+        tcTransport: true,
+        tcExpiring: true,
+        tcExtInactive: true,
+        tcExtSoon: true,
+        tcLeitstelle: true,
+        tcTrainings: true,
+        tcStatus6: true,
+        tcStatus6Min: 3,
     };
     // Aufbau der Einstellungsseite: [Schlüssel, Titel, Erklärung, abhängig von]
     const SETTINGS_SECTIONS = [
@@ -71,6 +80,22 @@
                 ['dispatchKeyNext', 'Taste: alarmieren & weiter'],
                 ['dispatchKeySkip', 'Taste: überspringen'],
                 ['dispatchKeyShare', 'Taste: im Verband freigeben & weiter', 'Ohne zu alarmieren'],
+            ],
+        },
+        {
+            id: 'check',
+            title: '📋 Tagescheck',
+            intro: 'Erster Reiter im Dashboard: zeigt, was gerade Aufmerksamkeit braucht. Jeder Punkt öffnet die passende Seite.',
+            items: [
+                ['tcCrew', 'Fahrzeuge ohne genug Personal', 'Weniger zugewiesen als die Mindestbesatzung – rücken nicht aus'],
+                ['tcTransport', 'Offene Sprechwünsche', 'Fahrzeuge in Status 5'],
+                ['tcExpiring', 'Einsätze, die heute Nacht verfallen', 'Werden ab 2 Uhr (UTC) gelöscht'],
+                ['tcExtInactive', 'Gebaute, aber inaktive Ausbauten'],
+                ['tcExtSoon', 'Ausbauten, die in 24 Stunden fertig werden'],
+                ['tcLeitstelle', 'Gebäude ohne Leitstelle'],
+                ['tcTrainings', 'Fehlende Lehrgänge', 'Liest die Personallisten – dauert bei vielen Wachen etwas'],
+                ['tcStatus6', 'Wachen mit vielen Fahrzeugen in Status 6'],
+                ['tcStatus6Min', 'Ab so vielen Fahrzeugen in Status 6 je Wache', '', 'tcStatus6'],
             ],
         },
         {
@@ -642,6 +667,10 @@
             .lsshelper-dash-count { margin-right: auto; min-width: 22px; padding: 1px 7px; border-radius: 11px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
             .lsshelper-dash-count-ok { background: var(--ok); }
             .lsshelper-dash-count-warn { background: var(--warn); }
+            .lsshelper-dash-count-info { background: var(--muted); }
+            .lsshelper-check-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); }
+            .lsshelper-check-row:last-of-type { border-bottom: none; }
+            .lsshelper-check-row small { color: var(--muted); }
             .lsshelper-dash-station { margin: 8px 0 2px; font-weight: 700; color: var(--text); }
             .lsshelper-dash-station small { margin-left: 8px; font-weight: 400; color: var(--muted); }
             #lsshelper-dash label.lsshelper-dash-row { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 3px 6px; border-radius: 6px; font-weight: 400; color: var(--text); cursor: pointer; }
@@ -2536,6 +2565,7 @@
     };
 
     const DASH_TOOLS = [
+        { id: 'check', title: 'Tagescheck', render: (...args) => renderCheckTool(...args) },
         { id: 'stations', title: 'Wachen', render: renderStationsTool },
         { id: 'expansion', title: 'Fuhrpark & Ausbau', render: renderExpansionTool },
         { id: 'aao', title: 'AAO', render: renderAaoTool },
@@ -2947,6 +2977,7 @@
         hookGame('missionMarkerAdd', marker => {
             if (!marker || marker.id === undefined) return;
             const id = String(marker.id);
+            if (marker.created_at) (shared.missionCreated = shared.missionCreated || {})[id] = marker.created_at;
             const prev = known.get(id);
             const cur = { state: marker.vehicle_state, missing: marker.missing_text || '', type: `${marker.mtid}|${marker.additive_overlays || ''}|${marker.overlay_index || ''}` };
             known.set(id, cur);
@@ -3190,6 +3221,156 @@
             out
         );
         return wrap;
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Werkzeug: Tagescheck – was gerade Aufmerksamkeit braucht
+     * ------------------------------------------------------------------ */
+
+    // Erstellungszeit der Einsätze: aus den Startdaten der Seite (missionMarkerAdd({...}) im Seitenquelltext) und aus späteren Meldungen
+    function missionCreatedTimes() {
+        const times = Object.assign({}, shared.missionCreated || {});
+        Array.from(document.scripts).forEach(script => {
+            const text = script.textContent || '';
+            if (!text.includes('missionMarkerAdd(')) return;
+            const pattern = /missionMarkerAdd\((\{.*?\})\);/g;
+            let match;
+            while ((match = pattern.exec(text))) {
+                try {
+                    const marker = JSON.parse(match[1]);
+                    if (marker.id && marker.created_at) times[String(marker.id)] = times[String(marker.id)] || marker.created_at;
+                } catch (e) {
+                    /* kein reines JSON – überspringen */
+                }
+            }
+        });
+        return times;
+    }
+
+    async function renderCheckTool(ctx) {
+        ctx.status('Lese Gebäude und Fahrzeuge …');
+        const { buildings, vehicles } = await loadBasics();
+        const buildingById = Object.fromEntries(buildings.map(b => [b.id, b]));
+        const where = v => (buildingById[v.building_id] ? buildingById[v.building_id].caption : '');
+        // Spielfenster öffnen: Dashboard schließen, damit das Fenster sichtbar ist
+        const open = (text, href, detail) => {
+            const row = dashEl('div', 'lsshelper-check-row');
+            const link = dashEl('a', 'lsshelper-dash-link', text);
+            link.href = href;
+            link.addEventListener('click', e => {
+                if (typeof window.lightboxOpen !== 'function') return;
+                e.preventDefault();
+                ctx.close();
+                window.lightboxOpen(href);
+            });
+            row.append(link);
+            if (detail) row.append(dashEl('small', '', detail));
+            return row;
+        };
+        const ok = [];
+        const checks = [];
+        // level: 'bad' = jetzt erledigen, 'warn' = demnächst, 'info' = zur Kenntnis
+        const add = (title, level, rows, hint) => (rows.length ? checks.push({ title, level, rows, hint }) : ok.push(title));
+
+        if (settings.tcCrew) {
+            const short = vehicles.filter(v => {
+                const min = (STAFF[v.vehicle_type] || [0, 0])[0];
+                return min > 0 && (v.assigned_personnel_count || 0) < min && v.fms_real !== 6;
+            });
+            add('Fahrzeuge ohne genug Personal', 'bad', short.map(v => open(v.caption, `/vehicles/${v.id}/zuweisung`, `${v.assigned_personnel_count || 0} von mind. ${STAFF[v.vehicle_type][0]} · ${where(v)}`)), 'Antippen öffnet die Personalzuweisung.');
+        }
+        if (settings.tcTransport) {
+            add('Offene Sprechwünsche', 'bad', vehicles.filter(v => v.fms_real === 5).map(v => open(v.caption, `/vehicles/${v.id}`, where(v))));
+        }
+        if (settings.tcExpiring) {
+            const times = missionCreatedTimes();
+            const last2am = new Date();
+            last2am.setUTCHours(2, 0, 0, 0);
+            if (Date.now() < last2am) last2am.setUTCDate(last2am.getUTCDate() - 1);
+            const panels = Array.from(document.querySelectorAll('#mission_list .missionSideBarEntry')).filter(p => p.style.display !== 'none' && !p.classList.contains('mission_deleted'));
+            const known = panels.filter(p => times[p.getAttribute('mission_id')]);
+            const expiring = known.filter(p => {
+                const created = times[p.getAttribute('mission_id')];
+                // created_at kommt als Unix-Sekunden oder als Zeitstempel-Text
+                const date = typeof created === 'number' ? new Date(created < 1e12 ? created * 1000 : created) : new Date(created);
+                return !isNaN(date) && date < last2am;
+            });
+            if (panels.length && !known.length) {
+                checks.push({ title: 'Einsätze, die heute Nacht verfallen', level: 'info', rows: [dashEl('div', 'lsshelper-dash-empty', 'Das Spiel liefert hier keine Erstellungszeiten – dieser Punkt lässt sich nicht prüfen.')] });
+            } else {
+                add('Einsätze, die heute Nacht verfallen', 'bad', expiring.map(p => {
+                    const caption = p.querySelector('[id^="mission_caption_"]');
+                    return open(caption ? caption.textContent.trim() : `Einsatz ${p.getAttribute('mission_id')}`, `/missions/${p.getAttribute('mission_id')}`);
+                }), 'Nur Einsätze aus deiner eigenen Liste.');
+            }
+        }
+        const extensions = buildings.flatMap(b => (b.extensions || []).map(ext => ({ b, ext })));
+        if (settings.tcExtInactive) {
+            add('Gebaute, aber inaktive Ausbauten', 'warn', extensions.filter(({ ext }) => ext.available && ext.enabled === false).map(({ b, ext }) => open(b.caption, `/buildings/${b.id}`, ext.caption)));
+        }
+        if (settings.tcExtSoon) {
+            const soon = extensions.filter(({ ext }) => !ext.available && ext.available_at && new Date(ext.available_at) - Date.now() < 24 * 3600 * 1000);
+            add('Ausbauten, die in 24 Stunden fertig werden', 'info', soon.sort((x, y) => new Date(x.ext.available_at) - new Date(y.ext.available_at)).map(({ b, ext }) => open(b.caption, `/buildings/${b.id}`, `${ext.caption} · ${new Date(ext.available_at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`)));
+        }
+        if (settings.tcLeitstelle) {
+            add('Gebäude ohne Leitstelle', 'warn', planLeitstellen(buildings).map(c => open(c.building.caption, `/buildings/${c.building.id}`, `Vorschlag: ${c.target.caption} (im Reiter „Wachen“ übernehmen)`)));
+        }
+        if (settings.tcStatus6) {
+            const byBuilding = {};
+            vehicles.filter(v => v.fms_real === 6).forEach(v => (byBuilding[v.building_id] = byBuilding[v.building_id] || []).push(v));
+            const many = Object.entries(byBuilding).filter(([, list]) => list.length >= Math.max(1, settings.tcStatus6Min));
+            add('Wachen mit vielen Fahrzeugen in Status 6', 'info', many.sort((a, b) => b[1].length - a[1].length).map(([id, list]) => open(buildingById[id] ? buildingById[id].caption : `Gebäude ${id}`, `/buildings/${id}`, `${list.length} außer Dienst: ${list.map(v => v.caption).join(', ')}`)));
+        }
+
+        const order = { bad: 0, warn: 1, info: 2 };
+        checks.sort((a, b) => order[a.level] - order[b.level]);
+        const urgent = checks.filter(c => c.level === 'bad').reduce((sum, c) => sum + c.rows.length, 0);
+        ctx.status(urgent ? `${urgent} Punkte zum Erledigen · Stand ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : `Nichts Dringendes · Stand ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`);
+        const COUNT_CLASS = { bad: '', warn: 'lsshelper-dash-count-warn', info: 'lsshelper-dash-count-info' };
+        checks.forEach(check => {
+            const card = dashCard(ctx.body, check.title, check.rows.length, COUNT_CLASS[check.level]);
+            if (check.hint) card.append(dashEl('div', 'lsshelper-dash-empty', check.hint));
+            // Lange Listen gekürzt, Rest auf Antippen
+            const LIMIT = 8;
+            check.rows.slice(0, LIMIT).forEach(row => card.append(row));
+            if (check.rows.length > LIMIT) {
+                const more = dashButton(`alle ${check.rows.length} zeigen`, 'lsshelper-btn-quiet', () => {
+                    check.rows.slice(LIMIT).forEach(row => more.before(row));
+                    more.remove();
+                });
+                card.append(more);
+            }
+        });
+
+        // Lehrgänge: braucht die Personallisten, daher erst auf Wunsch
+        if (settings.tcTrainings) {
+            const card = dashCard(ctx.body, 'Fehlende Lehrgänge');
+            const body = dashEl('div', 'lsshelper-dash-empty', 'Liest die Personallisten aller Wachen mit Lehrgangsfahrzeugen.');
+            card.append(body);
+            card.head.append(
+                dashButton('Prüfen', '', async btn => {
+                    btn.classList.add('lsshelper-btn-busy');
+                    const plan = await ctx.fleet();
+                    const training = plan.changes.filter(c => c.kind === 'training');
+                    body.remove();
+                    btn.remove();
+                    if (!training.length) card.append(dashEl('div', 'lsshelper-dash-empty', '✓ Alle Wachen haben genug ausgebildetes Personal.'));
+                    training.forEach(c => card.append(open(c.station.building.caption, `/buildings/${c.station.building.id}`, c.text)));
+                    ctx.status(`${training.length} Wachen brauchen Lehrgänge.`);
+                })
+            );
+        }
+
+        if (ok.length) {
+            const card = dashCard(ctx.body, 'In Ordnung', ok.length, 'lsshelper-dash-count-ok');
+            ok.forEach(title => card.append(dashEl('div', 'lsshelper-dash-empty', `✓ ${title}: nichts zu tun`)));
+        }
+        ctx.body.append(
+            dashButton('Neu prüfen', 'lsshelper-btn-quiet', () => {
+                forgetFleet();
+                ctx.open('check');
+            })
+        );
     }
 
     /* ------------------------------------------------------------------ *

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.4
+// @version      0.28.5
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -2951,7 +2951,13 @@
         const afterChoice = /^\/vehicles\/\d+\/(patient|gefangener)\/-?\d+/.test(location.pathname);
         // Auf der normalen Fahrzeugseite nur nach einer Erfolgsmeldung – sonst könnte man kein Fahrzeug mehr ansehen
         if (!afterChoice && !(document.querySelector('.alert-success') && !document.querySelector('[data-transport-request="true"]'))) return;
-        const next = document.getElementById('next-vehicle-fms-5');
+        // Nächster Sprechwunsch laut Spiel: der grüne Fahrzeug-Knopf, nie ein anderes Fahrzeug- oder Einsatz-Symbol
+        const current = (location.pathname.match(/^\/vehicles\/(\d+)/) || [])[1];
+        const vehicleLinks = Array.from(document.querySelectorAll('#next-vehicle-fms-5, a.btn-success[href*="/vehicles/"]')).filter(a => {
+            const id = (a.getAttribute('href') || '').match(/^(?:https?:\/\/[^/]+)?\/vehicles\/(\d+)\/?$/);
+            return id && id[1] !== current;
+        });
+        const next = vehicleLinks.find(a => a.classList.contains('btn-success')) || vehicleLinks[0];
         const mission = document.querySelector('a.btn.btn-success[href^="/missions/"]');
         // Im Leitstellen-Modus bestimmt dessen Warteschlange, was als Nächstes kommt
         let mode = null;
@@ -2962,6 +2968,14 @@
         }
         if (afterChoice && mode && mode.active) {
             return setTimeout(() => {
+                // Zeigt das Spiel einen weiteren Sprechwunsch, geht der vor (Transporte vor Ausbreitungen)
+                if (next) {
+                    const url = new URL(next.getAttribute('href'), location.origin).pathname;
+                    if (mode.takeKey) mode.takeKey(`v${url.match(/\d+/)[0]}`, 'Sprechwunsch (nächster laut Spiel)');
+                    mode.expectUrl = url;
+                    location.href = url;
+                    return;
+                }
                 const item = mode.takeNext();
                 if (item) {
                     mode.expectUrl = item.url;
@@ -3367,6 +3381,16 @@
             }
             render();
             return item || null;
+        };
+        // Bestimmten Eintrag nehmen (z. B. den nächsten Sprechwunsch, den das Spiel selbst anbietet)
+        mode.takeKey = (key, label) => {
+            const item = mode.queue.find(q => q.key === key);
+            if (item) {
+                mode.queue = mode.queue.filter(q => q !== item);
+                markOpened(item);
+            }
+            note(`→ ${item ? item.label : label}`);
+            render();
         };
         mode.count = () => mode.queue.length;
         // Übersprungen oder nur teilweise alarmiert: Einsatz wartet, bis ein Fahrzeug eines fehlenden Typs frei wird

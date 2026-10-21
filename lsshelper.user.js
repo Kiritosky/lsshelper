@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.27.3
+// @version      0.27.4
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -355,6 +355,37 @@
         d.keys.forEach(k => (DEMAND_BY_KEY[k] = d));
         d.texts.concat(d.label).forEach(t => (DEMAND_BY_TEXT[normalize(t)] = DEMAND_BY_TEXT[normalize(t)] || d));
     });
+
+    // Name aus „fehlende Fahrzeuge“ -> Bedarf mit Fahrzeugtypen (für alle Fahrzeuge):
+    // feste Liste, Rettungsmittel, Anforderungsnamen des Spiels (Ein- und Mehrzahl), Fahrzeugtyp-Namen; jeweils auch
+    // ohne Klammern, nur der Klammerinhalt (z. B. „LF“) und ohne Mehrzahl-Endung
+    let vehicleTypesByName = null;
+    let demandByAbbrev = null;
+    function demandForName(name) {
+        const medical = MEDICAL.default;
+        const medicalByName = { rtw: medical.transport, nef: medical.nef, rth: medical.rth, ktw: medical.ktw, lna: medical.lna, 'kdow lna': medical.lna, orgl: medical.orgl, 'kdow orgl': medical.orgl };
+        if (!vehicleTypesByName || !Object.keys(vehicleTypesByName).length) {
+            vehicleTypesByName = {};
+            Object.entries(dataLabels.vehicles).forEach(([type, caption]) => (vehicleTypesByName[normalize(caption)] = vehicleTypesByName[normalize(caption)] || []).push(parseInt(type)));
+        }
+        const variants = [normalize(name), normalizeTitle(name), ...(String(name).match(/\(([^)]+)\)/g) || []).map(normalize)].filter(Boolean);
+        variants.slice().forEach(v => [/en$/, /e$/, /n$/, /s$/].forEach(re => v.length > 4 && re.test(v) && variants.push(v.replace(re, ''))));
+        // Abkürzungen aus den Klammern der festen Liste, z. B. „Löschfahrzeug (LF)“ -> „LF“
+        if (!demandByAbbrev) {
+            demandByAbbrev = {};
+            DEMANDS.forEach(d => d.texts.forEach(t => (t.match(/\(([^)]+)\)/g) || []).forEach(m => (demandByAbbrev[normalize(m)] = demandByAbbrev[normalize(m)] || d))));
+        }
+        for (const v of variants) {
+            if (DEMAND_BY_TEXT[v]) return DEMAND_BY_TEXT[v];
+            if (demandByAbbrev[v]) return demandByAbbrev[v];
+            if (medicalByName[v]) return medicalByName[v];
+            const key = dataLabels.reqForms[v];
+            const byKey = key && demandForKey(key);
+            if (byKey && byKey.types && byKey.types.length) return byKey;
+            if (vehicleTypesByName[v]) return { label: name, keys: [], texts: [name], types: vehicleTypesByName[v], attrs: [] };
+        }
+        return null;
+    }
 
     // Anforderungen, die das Skript (noch) nicht kennt, z. B. nach einem Spiel-Update: Meist heißt das AAO-Feld
     // genauso wie die Anforderung – dann lässt sie sich ohne Skript-Update zuordnen.
@@ -798,6 +829,8 @@
     let lastDemands = null;
     // Fehlendes, das kein Fahrzeug ist (Wasser, Personal …) – dann ist der Einsatz nicht „fertig“, auch wenn kein Fahrzeug fehlt
     let lastExtraMissing = 0;
+    // Namen aus „fehlende Fahrzeuge“, die keinem Fahrzeugtyp zugeordnet werden konnten (fürs Protokoll)
+    const lastUnknownNames = [];
 
     // Verfügbarkeit laut Spiel (grüner Haken / rotes Kreuz an der AAO); null, solange das Spiel noch rechnet
     function aaoAvailable(aao) {
@@ -1015,6 +1048,7 @@
         hotkeyChoices.length = 0;
         lastDemands = null;
         lastExtraMissing = 0;
+        lastUnknownNames.length = 0;
         const showName = byName => {
             hotkeyChoices.push([{ aao: byName[0], clicks: 1 }]);
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
@@ -1063,8 +1097,9 @@
             const medicalByName = { nef: medical.nef, rth: medical.rth, rtw: medical.transport, ktw: medical.ktw, 'kdow lna': medical.lna, lna: medical.lna, 'kdow orgl': medical.orgl, orgl: medical.orgl };
             missing.forEach(({ name, need }) => {
                 const key = normalize(name);
-                const demand = medicalByName[key] || restrictDemand(DEMAND_BY_TEXT[key], mission);
+                const demand = medicalByName[key] || restrictDemand(demandForName(name), mission);
                 if (demand || !/^(l\b|liter|feuerwehr|polizist|thw-einsatz|rettungsdienst|personen|l\/min)/i.test(name)) {
+                    if (!demand) lastUnknownNames.push(name);
                     demands.push({ demand, label: demand && medicalByName[key] ? demand.label : name, need });
                 } else {
                     infos.push(`ℹ ${need} ${name}`);
@@ -1456,16 +1491,17 @@
 
     // Bezeichnungen aus den Spieldaten: Anforderungen und Voraussetzungen (Schlüssel -> deutscher Name)
     // ... sowie Fahrzeugnamen, wo ein Fahrzeug gekauft werden kann, und offizielle Gebäudenamen
-    const dataLabels = { req: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
+    // reqForms: Einzahl und Mehrzahl jeder Anforderung (normalisiert) -> Anforderungs-Schlüssel, für die Namen in „fehlende Fahrzeuge“
+    const dataLabels = { req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,
     // Lehrgangsnamen aus der offiziellen Schnittstelle des Spiels. Die Tabellen oben sind der Rückfall.
-    const VEHICLE_DATA_KEY = 'lsshelper_game_data_v3';
+    const VEHICLE_DATA_KEY = 'lsshelper_game_data_v4';
 
     function applyVehicleData(data) {
         if (!data || !data.staff) return;
-        ['req', 'pre', 'vehicles', 'possible', 'buildings'].forEach(key => Object.assign(dataLabels[key], data[key]));
+        ['req', 'reqForms', 'pre', 'vehicles', 'possible', 'buildings'].forEach(key => Object.assign(dataLabels[key], data[key] || {}));
         Object.entries(data.staff).forEach(([type, staff]) => {
             STAFF[type] = staff;
             if (data.training[type]) TRAINING[type] = data.training[type];
@@ -1482,12 +1518,17 @@
         }
         if (cached && Date.now() - cached.t < CACHE_TTL) return;
         const vehicles = await (await fetch('https://api.lss-manager.de/de_DE/vehicles')).json();
-        const data = { t: Date.now(), staff: {}, training: {}, names: {}, req: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
+        const data = { t: Date.now(), staff: {}, training: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
         // Die Zusatzquellen dürfen fehlen – dann bleibt es bei den eingebauten Bezeichnungen
         await sleep(150);
         const labels = await fetch('https://api.lss-manager.de/de_DE/einsaetze').then(r => r.json()).catch(() => ({}));
         const singular = text => String(text).split('|')[0].trim();
-        Object.entries(labels.requirements || {}).forEach(([key, text]) => (data.req[key] = singular(text)));
+        Object.entries(labels.requirements || {}).forEach(([key, text]) => {
+            data.req[key] = singular(text);
+            String(text)
+                .split('|')
+                .forEach(form => form.trim() && (data.reqForms[normalize(form)] = key));
+        });
         Object.entries(labels.prerequisites || {}).forEach(([key, text]) => (data.pre[key] = singular(text)));
         await sleep(150);
         const game = await fetch('/api/mission_type_data').then(r => r.json()).catch(() => ({}));
@@ -2972,6 +3013,7 @@
         mode.note = note;
         const missions = new Map();
         const panelOf = id => document.getElementById(`mission_${id}`);
+        const unknownNoted = new Set();
         // Fahrzeuge auf Anfahrt je Einsatz (Status 3): zählen nicht als „fehlend“, auch wenn das Spiel sie noch so anzeigt
         const driving = new Map();
         const setDriving = (vehicleId, missionId) => {
@@ -2983,9 +3025,11 @@
             const onTheWay = Array.from(driving.get(String(id)) || []).map(v => mode.vehicleType[v]);
             const result = {};
             Object.entries(missing).forEach(([name, count]) => {
-                const key = normalize(name);
-                const medical = MEDICAL.default;
-                const demand = DEMAND_BY_TEXT[key] || { rtw: medical.transport, nef: medical.nef, rth: medical.rth, ktw: medical.ktw, lna: medical.lna, 'kdow lna': medical.lna, orgl: medical.orgl, 'kdow orgl': medical.orgl }[key];
+                const demand = demandForName(name);
+                if (!demand && !unknownNoted.has(name) && !/^(l\b|liter|feuerwehr|polizist|thw-einsatz|rettungsdienst|personen|l\/min)/i.test(name)) {
+                    unknownNoted.add(name);
+                    note(`Fahrzeugname nicht zugeordnet: „${name}“`);
+                }
                 let left = count;
                 if (demand) {
                     onTheWay.forEach((type, i) => {
@@ -3539,6 +3583,7 @@
                 // Warten, bis die Markierung gerechnet hat (höchstens 5 Sekunden)
                 for (let i = 0; i < 25 && !hotkeyReady; i++) await sleep(200);
                 const status = await demandStatus().catch(() => ({ open: [], unmet: [], known: false }));
+                if (lastUnknownNames.length) note(`Fahrzeugname nicht zugeordnet: ${lastUnknownNames.map(n => `„${n}“`).join(', ')}`);
                 if (document.querySelector('.vehicle_checkbox:checked')) return;
                 // Laut Markierung fehlt nichts mehr (alles alarmiert bzw. auf Anfahrt): nicht aufhalten, nicht auf die Warteliste
                 if (status.known && !status.open.length && !lastExtraMissing) {
@@ -3804,7 +3849,7 @@
         { name: 'buildingInfo', match: /^\/buildings\/\d+\/?$/, run: buildingInfo },
     ];
 
-    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, nameVariants, nameScore, planFleet, openDashboard, hotkey: triggerHotkey, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };
+    window.LSSHelper = { features: Object.fromEntries(FEATURES.map(f => [f.name, f.run])), getMissions, demandForName, nameVariants, nameScore, planFleet, openDashboard, hotkey: triggerHotkey, applyChange: change => APPLY[change.kind](change), rerun: () => (clearMarks(), aaoHighlight()) };
 
     FEATURES.filter(f => f.match.test(location.pathname)).forEach(f => {
         try {

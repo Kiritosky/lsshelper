@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.24.1
+// @version      0.24.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -52,6 +52,7 @@
         dispatchButtons: true,
         dispatchKeyNext: 'd',
         dispatchKeySkip: 'f',
+        dispatchKeyShare: 'g',
     };
     // Aufbau der Einstellungsseite: [Schlüssel, Titel, Erklärung, abhängig von]
     const SETTINGS_SECTIONS = [
@@ -69,6 +70,7 @@
                 ['dispatchButtons', 'Knöpfe im Fenster', 'Für die Bedienung ohne Tastatur, z. B. am iPad'],
                 ['dispatchKeyNext', 'Taste: alarmieren & weiter'],
                 ['dispatchKeySkip', 'Taste: überspringen'],
+                ['dispatchKeyShare', 'Taste: im Verband freigeben & weiter', 'Ohne zu alarmieren'],
             ],
         },
         {
@@ -3060,6 +3062,18 @@
             else if (next) mode.pendingUrl = next.url;
             alarm.click();
         };
+        // Nur im Verband freigeben (ohne Alarm) und weiter
+        let sharing = false;
+        const shareNext = async () => {
+            const id = (location.pathname.match(/^\/missions\/(\d+)/) || [])[1];
+            if (!id || sharing) return;
+            sharing = true;
+            info.textContent = 'Gebe im Verband frei …';
+            const response = await fetch(`/missions/${id}/alliance`, { credentials: 'same-origin' }).catch(() => null);
+            sharing = false;
+            if (!response || !response.ok) return flash('Freigeben hat nicht geklappt – bitte im Spiel prüfen.');
+            skip();
+        };
         const stop = () => {
             mode.stop();
             bar.remove();
@@ -3088,6 +3102,7 @@
             };
             if (isMission) add(`AAO${key(settings.hotkey)}`, 'btn-default', () => triggerHotkey());
             if (isMission) add(`Alarm & weiter${key(settings.dispatchKeyNext)}`, 'btn-success', alarmNext);
+            if (isMission) add(`Verband & weiter${key(settings.dispatchKeyShare)}`, 'btn-primary', shareNext);
             add(`Überspringen${key(settings.dispatchKeySkip)}`, 'btn-default', skip);
             add('■', 'btn-danger', stop);
         }
@@ -3097,6 +3112,7 @@
         const onKey = k => {
             if (settings.dispatchKeyNext && k === settings.dispatchKeyNext && isMission) return alarmNext(), true;
             if (settings.dispatchKeySkip && k === settings.dispatchKeySkip) return skip(), true;
+            if (settings.dispatchKeyShare && k === settings.dispatchKeyShare && isMission) return shareNext(), true;
             return false;
         };
         window.LSSHelper.dispatchKey = onKey;
@@ -3121,7 +3137,7 @@
                 const mode = shared.dispatch;
                 if (!mode || !mode.active || e.ctrlKey || e.metaKey || e.altKey || !e.key || typingIn(e.target)) return;
                 const k = e.key.toLowerCase();
-                if (k !== settings.dispatchKeyNext && k !== settings.dispatchKeySkip) return;
+                if (![settings.dispatchKeyNext, settings.dispatchKeySkip, settings.dispatchKeyShare].includes(k)) return;
                 const done = Array.from(document.querySelectorAll('iframe')).some(frame => {
                     try {
                         const inner = frame.contentWindow;

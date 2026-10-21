@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.1
+// @version      0.28.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -610,6 +610,9 @@
     }
 
     // Patienten, denen laut Einsatzfenster noch etwas fehlt: { nef: 1, rtw: 2, ... }
+    // Krankentransport? (Name des Einsatzes) – dort fährt nur der KTW
+    const isPatientTransport = () => /krankentransport/i.test(getMissionTitle() || '');
+
     function parsePatientNeeds() {
         const needs = {};
         document.querySelectorAll('.mission_patient .alert-danger').forEach(alert => {
@@ -620,7 +623,7 @@
             // Transport: „RTW oder KTW“ = beides passt, nur „KTW“ = Krankentransport, nur „RTW“ = Rettungswagen
             const rtw = /\bRTW\b/.test(text);
             const ktw = /\bKTW\b/.test(text);
-            const transport = rtw && ktw ? 'transportKtw' : ktw ? 'ktw' : rtw ? 'transport' : null;
+            const transport = ktw && isPatientTransport() ? 'ktw' : rtw && ktw ? 'transportKtw' : ktw ? 'ktw' : rtw ? 'transport' : null;
             if (transport) needs[transport] = (needs[transport] || 0) + 1;
         });
         return needs;
@@ -827,6 +830,8 @@
     const hotkeyChoices = [];
     // Noch offene Bedarfe der letzten Markierung (für den Leitstellen-Modus: worauf ein übersprungener Einsatz wartet)
     let lastDemands = null;
+    // Alle noch offenen Bedarfe, auch die seltenen unter der Mindest-Wahrscheinlichkeit
+    let lastAllDemands = null;
     // Fehlendes, das kein Fahrzeug ist (Wasser, Personal …) – dann ist der Einsatz nicht „fertig“, auch wenn kein Fahrzeug fehlt
     let lastExtraMissing = 0;
     // Namen aus „fehlende Fahrzeuge“, die keinem Fahrzeugtyp zugeordnet werden konnten (fürs Protokoll)
@@ -921,6 +926,7 @@
         const rare = d => d.chance !== undefined && d.chance < settings.minChance;
         const open = demands.filter(d => d.need > 0 && !rare(d));
         lastDemands = open;
+        lastAllDemands = demands.filter(d => d.need > 0);
         const items = resolveDemands(open, aaos, parsed).map(r => {
             r.hits.forEach(h => clicksByAao.set(h.aao, Math.max(h.clicks, clicksByAao.get(h.aao) || 0)));
             if (r.options.length && settings.markVehicles) hotkeyChoices.push(r.options);
@@ -1047,6 +1053,7 @@
         }
         hotkeyChoices.length = 0;
         lastDemands = null;
+        lastAllDemands = null;
         lastExtraMissing = 0;
         lastUnknownNames.length = 0;
         const showName = byName => {
@@ -1205,7 +1212,8 @@
         if (mission.p) {
             const [max, min, nef, rth, transport, ktw] = mission.p;
             const patients = patientCount || min || 1;
-            const transportDemand = (ktw && medical.transportKtw) || medical.transport;
+            // Krankentransport fährt nur der KTW, sonst RTW (bzw. „RTW oder KTW“, wo erlaubt)
+            const transportDemand = /krankentransport/i.test(mission.n || '') ? medical.ktw : (ktw && medical.transportKtw) || medical.transport;
             if (transport && transportDemand) demands.push({ demand: transportDemand, label: `${transportDemand.label} (${transport} %)`, need: patients, chance: transport, medical: true });
             if (nef && medical.nef) demands.push({ demand: medical.nef, label: `${medical.nef.label} (${nef} %)`, need: 1, chance: nef, medical: true });
             if (rth && medical.rth) demands.push({ demand: medical.rth, label: `${medical.rth.label} (${rth} %)`, need: 1, chance: rth, medical: true });
@@ -2954,6 +2962,15 @@
     // „Fehlende Fahrzeuge: 2 LF, 1 RW“ -> { LF: 2, RW: 1 }
     function parseMissing(text) {
         const result = {};
+        // Die Einsatzmeldung liefert teils einen Datenblock { vehicles, personnel, other } statt Text
+        if (/^\s*\{/.test(String(text || ''))) {
+            try {
+                const data = JSON.parse(text);
+                text = data.vehicles || '';
+            } catch (e) {
+                /* doch Text */
+            }
+        }
         String(text || '')
             .replace(/^[^:]*:/, '')
             .split(',')
@@ -2990,6 +3007,7 @@
     // Offene Bedarfe des Einsatzfensters und welche davon gerade kein freies Fahrzeug haben
     async function demandStatus() {
         let demands = lastDemands;
+        let all = lastAllDemands;
         // Bei einer AAO mit Einsatznamen gibt es keine Einzelbedarfe – dann aus den Einsatzdaten ermitteln
         if (!demands) {
             const type = getMissionType();
@@ -2998,7 +3016,8 @@
             if (!mission) return { open: [], unmet: [], known: false };
             demands = missionDemands(mission, document.querySelectorAll('.mission_patient').length).demands;
             applyPresent(demands, presentVehicles(), 'all');
-            demands = demands.filter(d => d.need > 0 && !(d.chance !== undefined && d.chance < settings.minChance));
+            all = demands.filter(d => d.need > 0);
+            demands = all.filter(d => !(d.chance !== undefined && d.chance < settings.minChance));
         }
         // Freie Fahrzeuge: Typnummer und – als zweite Erkennung – der Typname, den das Spiel an der Zeile führt
         const rows = freeVehicleRows().filter(row => !row.querySelector('.vehicle_checkbox:checked'));
@@ -3009,7 +3028,8 @@
         const freeNames = new Set(rows.map(row => normalize(row.getAttribute('vehicle_type') || '')).filter(Boolean));
         const available = demand => demand.types.some(type => free.has(type)) || demand.texts.concat(demand.label || []).some(text => freeNames.has(normalize(text)));
         const unmet = demands.filter(d => d.demand && d.demand.types.length && !available(d.demand)).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
-        return { open: demands, unmet, known: true, listed: rows.length };
+        const present = presentVehicles();
+        return { open: demands, all: all || demands, unmet, known: true, listed: rows.length, dispatched: present.driving.length + present.atScene.length };
     }
 
     // Startdaten der Hauptseite: das Spiel ruft beim Laden missionMarkerAdd({...}) für jeden Einsatz auf
@@ -3615,9 +3635,10 @@
         );
 
         // Kein einziges passendes Fahrzeug frei: gleich überspringen (nicht bei von Hand geöffneten Einsätzen)
-        const manual = mode.manualUrl === location.pathname;
+        // Nur Fenster prüfen, die der Modus selbst geöffnet hat – nicht von Hand geöffnete (Übersicht oder Einsatzliste)
+        const openedByMode = mode.expectUrl === location.pathname && mode.manualUrl !== location.pathname;
         mode.manualUrl = null;
-        if (isMission && settings.dispatchAutoSkip && !manual) {
+        if (isMission && settings.dispatchAutoSkip && openedByMode) {
             (async () => {
                 // Warten, bis die Markierung gerechnet hat (höchstens 5 Sekunden)
                 for (let i = 0; i < 25 && !hotkeyReady; i++) await sleep(200);
@@ -3633,13 +3654,16 @@
                 if (lastUnknownNames.length) note(`Fahrzeugname nicht zugeordnet: ${lastUnknownNames.map(n => `„${n}“`).join(', ')}`);
                 if (document.querySelector('.vehicle_checkbox:checked')) return;
                 // Laut Markierung fehlt nichts mehr (alles alarmiert bzw. auf Anfahrt): nicht aufhalten, nicht auf die Warteliste
-                if (status.known && !status.open.length && !lastExtraMissing) {
+                if (status.known && status.dispatched > 0 && !status.all.length && !lastExtraMissing) {
                     info.textContent = 'Nichts mehr nötig – alles alarmiert oder auf Anfahrt – weiter …';
                     note('übersprungen, nichts mehr nötig (alles alarmiert oder auf Anfahrt)');
                     await sleep(700);
                     return skip();
                 }
-                if (!status.open.length || status.unmet.length < status.open.length) return;
+                if (!status.open.length || status.unmet.length < status.open.length) {
+                    if (status.open.length) note(`offen gelassen: ${status.open.length - status.unmet.length} von ${status.open.length} Bedarfen haben ein freies Fahrzeug`);
+                    return;
+                }
                 // Leere Liste heißt evtl. nur „noch nicht geladen“ – dann lieber nicht überspringen
                 if (!status.listed) return note('Fahrzeugliste leer oder nicht geladen – nicht automatisch übersprungen');
                 info.textContent = `Nichts frei (${status.unmet.map(u => u.label).join(', ')}) – überspringe …`;

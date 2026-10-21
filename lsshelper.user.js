@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.25.1
+// @version      0.26.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -702,7 +702,13 @@
             #lsshelper-dash input[type="number"] { width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; }
             .lsshelper-menu-badge { display: inline-block; min-width: 16px; padding: 0 5px; border-radius: 8px; background: #c62828; color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
             .lsshelper-dash-floating { position: fixed; left: 6px; bottom: 6px; z-index: 99999; }
-            #lsshelper-dispatch-toggle { margin-left: 4px; }
+            #lsshelper-dispatch { display: inline-block; margin-left: 4px; vertical-align: middle; }
+            #lsshelper-dispatch .lsshelper-dispatch-panel { display: inline-block; margin-left: 6px; font-size: 12px; }
+            #lsshelper-dispatch .lsshelper-dispatch-panel summary { cursor: pointer; }
+            #lsshelper-dispatch .lsshelper-dispatch-panel[open] { display: block; margin: 6px 0; padding: 6px 8px; border: 1px solid rgba(128, 128, 128, 0.5); border-radius: 6px; }
+            #lsshelper-dispatch .lsshelper-dispatch-list { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 8px; }
+            #lsshelper-dispatch .lsshelper-dispatch-empty { opacity: 0.6; }
+            #lsshelper-dispatch .lsshelper-dispatch-log { max-height: 180px; overflow: auto; margin: 4px 0 0; padding: 6px; font-size: 11px; white-space: pre-wrap; }
             #lsshelper-dispatch-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin: -5px -5px 6px; background: #1f2229; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
             #lsshelper-dispatch-bar .lsshelper-dispatch-info { flex: 1; min-width: 160px; font-weight: 700; }
             #lsshelper-dispatch-bar .lsshelper-dispatch-warn { color: #ffb74d; }
@@ -2903,48 +2909,158 @@
         return demands.filter(d => d.demand && d.demand.types.length && !d.demand.types.some(type => free.has(type))).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
     }
 
+    // Startdaten der Hauptseite: das Spiel ruft beim Laden missionMarkerAdd({...}) für jeden Einsatz auf
+    function pageMarkers() {
+        const markers = [];
+        Array.from(document.scripts).forEach(script => {
+            const text = script.textContent || '';
+            if (!text.includes('missionMarkerAdd(')) return;
+            const pattern = /missionMarkerAdd\((\{.*?\})\);/g;
+            let match;
+            while ((match = pattern.exec(text))) {
+                try {
+                    markers.push(JSON.parse(match[1]));
+                } catch (e) {
+                    /* kein reines JSON – überspringen */
+                }
+            }
+        });
+        return markers;
+    }
+
     function dispatchMain() {
         if (inFrame || !document.getElementById('missions-panel-body')) return;
         addStyles();
         const mode = (shared.dispatch = shared.dispatch || { active: false, queue: [], opened: new Set(), log: [], pendingUrl: null, opened_missing: {}, fms: {}, vehicleType: {}, waiting: {} });
-        const known = new Map();
+        const loadedAt = Date.now();
+        const time = () => new Date().toLocaleTimeString('de-DE');
         const note = text => {
-            mode.log.unshift(`${new Date().toLocaleTimeString('de-DE')} ${text}`);
-            mode.log.length = Math.min(mode.log.length, 30);
+            mode.log.unshift(`${time()} ${text}`);
+            mode.log.length = Math.min(mode.log.length, 60);
+            renderPanel();
         };
+
+        // Ein Datensatz je Einsatz: aus den Meldungen des Spiels, ergänzt um die Einsatzliste
+        const missions = new Map();
+        const panelOf = id => document.getElementById(`mission_${id}`);
+        // Liste aus den Daten der Meldung (zuverlässig, auch wenn der Listeneintrag noch fehlt); sonst aus der Einsatzliste
+        const listOfMarker = marker => {
+            if (marker.sw) return 'planned';
+            if (marker.user_id !== undefined && marker.user_id !== null && String(marker.user_id) !== String(window.user_id)) return 'alliance';
+            if (marker.user_id !== undefined && marker.user_id !== null) return 'own';
+            return null;
+        };
+        const recordFromMarker = marker => ({
+            id: String(marker.id),
+            name: marker.caption || '',
+            state: marker.vehicle_state,
+            missing: marker.missing_text || '',
+            type: `${marker.mtid}|${marker.additive_overlays || ''}|${marker.overlay_index || ''}`,
+            list: listOfMarker(marker),
+            created: !marker.created_at ? null : typeof marker.created_at === 'number' ? (marker.created_at < 1e12 ? marker.created_at * 1000 : marker.created_at) : Date.parse(marker.created_at) || null,
+        });
+        const recordFromPanel = (id, panel) => {
+            const caption = panel.querySelector('[id^="mission_caption_"]');
+            return { id, name: caption ? caption.textContent.trim() : '', state: panelState(panel), missing: panelMissing(panel), type: null, list: panelList(panel), created: null };
+        };
+        const nameOf = id => {
+            const rec = missions.get(String(id));
+            const caption = panelOf(id) && panelOf(id).querySelector('[id^="mission_caption_"]');
+            return (rec && rec.name) || (caption && caption.textContent.trim()) || `Einsatz ${id}`;
+        };
+        const listOf = id => {
+            const rec = missions.get(String(id));
+            return (rec && rec.list) || panelList(panelOf(id));
+        };
+
+        // Ausgangslage beim Laden: alles, was jetzt da ist, ist nicht „neu“
+        pageMarkers().forEach(marker => marker.id !== undefined && missions.set(String(marker.id), Object.assign(recordFromMarker(marker), { decided: true })));
         document.querySelectorAll('#missions-panel-body .missionSideBarEntry').forEach(panel => {
             const id = panel.getAttribute('mission_id') || panel.id.replace('mission_', '');
-            known.set(id, { state: panelState(panel), missing: panelMissing(panel) });
+            if (!missions.has(id)) missions.set(id, Object.assign(recordFromPanel(id, panel), { decided: true }));
         });
+        // Einsatz-IDs steigen: alles bis zur höchsten bekannten ID gab es schon beim Laden
+        const baselineId = Math.max(0, ...Array.from(missions.keys()).map(Number).filter(n => !isNaN(n)));
+        const isNew = rec => (rec.created ? rec.created > loadedAt - 60 * 1000 : baselineId > 0 ? Number(rec.id) > baselineId : true);
 
         // Ist gerade ein Spielfenster offen? Sichtbares iframe mit einer Spielseite – auch wenn es noch lädt (dann zählt die Zieladresse)
         const GAME_PAGE = /^\/(missions|vehicles|buildings|aaos|profile|credits|verband|alliance)/;
         let lastOpen = 0;
-        const windowOpen = () =>
-            Date.now() - lastOpen < 1500 ||
-            Array.from(document.querySelectorAll('iframe')).some(frame => {
+        // Erst die Zieladresse prüfen: ein frisch eingefügtes Fenster nicht anfassen, solange es lädt
+        const blockingFrame = () =>
+            Array.from(document.querySelectorAll('iframe')).find(frame => {
                 if (!frame.getClientRects().length || frame.offsetWidth < 200) return false;
+                if (GAME_PAGE.test(new URL(frame.getAttribute('src') || 'about:blank', location.origin).pathname)) return true;
                 try {
-                    if (GAME_PAGE.test(frame.contentWindow.location.pathname)) return true;
+                    return GAME_PAGE.test(frame.contentWindow.location.pathname);
                 } catch (e) {
-                    /* fremder Ursprung */
+                    return false;
                 }
-                return GAME_PAGE.test(new URL(frame.getAttribute('src') || 'about:blank', location.origin).pathname);
             });
+        const windowOpen = () => Date.now() - lastOpen < 1500 || !!blockingFrame();
 
+        // ----- Bedienung im Hauptfenster: Start/Stopp und Übersicht -----
+        const wrap = document.createElement('div');
+        wrap.id = 'lsshelper-dispatch';
         const button = document.createElement('a');
         button.href = '#';
         button.id = 'lsshelper-dispatch-toggle';
-        button.className = 'btn btn-xs btn-success';
+        const details = document.createElement('details');
+        details.className = 'lsshelper-dispatch-panel';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Übersicht';
+        const panelBody = document.createElement('div');
+        details.append(summary, panelBody);
+        wrap.append(button, details);
+
         const render = () => {
             button.className = `btn btn-xs ${mode.active ? 'btn-danger' : 'btn-success'}`;
             const waiting = Object.keys(mode.waiting).length;
             const extra = [mode.queue.length ? `${mode.queue.length} offen` : '', waiting ? `${waiting} warten auf Fahrzeuge` : ''].filter(Boolean).join(', ');
             button.textContent = mode.active ? `■ Leitstellen-Modus stoppen${extra ? ` (${extra})` : ''}` : '▶ Leitstellen-Modus';
+            details.style.display = mode.active || mode.log.length ? '' : 'none';
+            renderPanel();
         };
+        // Übersicht: Warteschlange und Warteliste (antippen öffnet sofort) sowie das Protokoll
+        function renderPanel() {
+            if (!details.open) return;
+            panelBody.textContent = '';
+            const section = (title, rows, empty) => {
+                panelBody.append(Object.assign(document.createElement('b'), { textContent: title }));
+                const list = document.createElement('div');
+                list.className = 'lsshelper-dispatch-list';
+                if (!rows.length) list.append(Object.assign(document.createElement('div'), { className: 'lsshelper-dispatch-empty', textContent: empty }));
+                rows.forEach(row => list.append(row));
+                panelBody.append(list);
+            };
+            const link = (text, onTap) => {
+                const a = document.createElement('a');
+                a.href = '#';
+                a.textContent = text;
+                a.addEventListener('click', e => {
+                    e.preventDefault();
+                    onTap();
+                });
+                return a;
+            };
+            section('Als Nächstes', mode.queue.map(item => link(item.label, () => openNow(item))), mode.active ? 'Nichts offen' : 'Modus ist aus');
+            section('Wartet auf Fahrzeuge', Object.entries(mode.waiting).map(([id, wait]) => link(`${nameOf(id)} – wartet auf ${wait.labels.join(', ')}`, () => openNow(missionItem(id, 'manual', {})))), 'Nichts');
+            const log = document.createElement('pre');
+            log.className = 'lsshelper-dispatch-log';
+            log.textContent = mode.log.join('\n') || '–';
+            const copy = link('Protokoll kopieren', () => {
+                const text = mode.log.join('\n');
+                if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => (copy.textContent = 'Kopiert ✓'), () => prompt('Protokoll:', text));
+                else prompt('Protokoll:', text);
+            });
+            panelBody.append(Object.assign(document.createElement('b'), { textContent: 'Protokoll ' }), copy, log);
+        }
+        details.addEventListener('toggle', renderPanel);
 
+        // ----- Warteschlange -----
         const enqueue = item => {
-            if (!mode.active || mode.opened.has(item.sig) || mode.queue.some(q => q.sig === item.sig)) return;
+            if (!mode.active) return;
+            if (mode.opened.has(item.sig) || mode.queue.some(q => q.sig === item.sig)) return;
             // Pro Einsatz bzw. Fahrzeug nur ein Eintrag in der Schlange – der neuere Anlass ersetzt den älteren
             mode.queue = mode.queue.filter(q => q.key !== item.key);
             mode.queue.push(item);
@@ -2954,17 +3070,24 @@
             render();
             setTimeout(processQueue, 0);
         };
-        const drop = key => {
+        const drop = (key, reason) => {
             const before = mode.queue.length;
             mode.queue = mode.queue.filter(q => q.key !== key);
-            if (before !== mode.queue.length) render();
+            if (before !== mode.queue.length) {
+                if (reason) note(`− ${reason}`);
+                render();
+            }
+        };
+        const markOpened = item => {
+            mode.opened.add(item.sig);
+            if (item.missing) mode.opened_missing[item.key] = item.missing;
+            if (item.type === 'mission') delete mode.waiting[item.id];
         };
         // Nimmt den nächsten Eintrag aus der Schlange und merkt ihn als geöffnet (wird nie wieder geöffnet)
         mode.takeNext = () => {
             const item = mode.queue.shift();
             if (item) {
-                mode.opened.add(item.sig);
-                if (item.missing) mode.opened_missing[item.key] = item.missing;
+                markOpened(item);
                 note(`→ ${item.label}`);
             }
             render();
@@ -2973,16 +3096,40 @@
         mode.count = () => mode.queue.length;
         // Übersprungen oder nur teilweise alarmiert: Einsatz wartet, bis ein Fahrzeug eines fehlenden Typs frei wird
         mode.waitFor = (id, unmet) => {
-            if (!unmet || !unmet.length) return delete mode.waiting[id];
+            if (!unmet || !unmet.length) {
+                delete mode.waiting[id];
+                return render();
+            }
             mode.waiting[id] = { types: new Set(unmet.flatMap(u => u.types)), labels: unmet.map(u => u.label) };
-            note(`⏳ Einsatz ${id} wartet auf ${mode.waiting[id].labels.join(', ')}`);
+            note(`⏳ ${nameOf(id)} wartet auf ${mode.waiting[id].labels.join(', ')}`);
             render();
         };
+        // Aus der Übersicht angetippt: sofort öffnen
+        const openNow = item => {
+            mode.queue = mode.queue.filter(q => q.key !== item.key);
+            markOpened(item);
+            note(`→ ${item.label} (von Hand)`);
+            lastOpen = Date.now();
+            render();
+            if (typeof window.lightboxOpen === 'function') window.lightboxOpen(item.url);
+        };
+        let blockedSince = 0;
         const processQueue = () => {
-            if (!mode.active || mode.starting || windowOpen() || typeof window.lightboxOpen !== 'function') return;
-            const url = mode.pendingUrl || (mode.queue.length ? mode.takeNext().url : null);
+            if (!mode.active || mode.starting || typeof window.lightboxOpen !== 'function') return;
+            if (!mode.pendingUrl && !mode.queue.length) return (blockedSince = 0);
+            if (windowOpen()) {
+                // Hängt die Warteschlange lange an einem Fenster, steht im Protokoll, an welchem
+                const frame = blockingFrame();
+                if (!blockedSince) blockedSince = Date.now();
+                else if (Date.now() - blockedSince > 30000) {
+                    blockedSince = Date.now();
+                    note(`… wartet, weil ein Fenster offen ist${frame ? ` (${new URL(frame.getAttribute('src') || '', location.origin).pathname})` : ''}`);
+                }
+                return;
+            }
+            blockedSince = 0;
+            const url = mode.pendingUrl || mode.takeNext().url;
             mode.pendingUrl = null;
-            if (!url) return;
             lastOpen = Date.now();
             window.lightboxOpen(url);
         };
@@ -2995,20 +3142,17 @@
         };
 
         const missionItem = (id, reason, missing) => {
-            const panel = document.getElementById(`mission_${id}`);
-            const caption = panel && panel.querySelector('[id^="mission_caption_"]');
-            const name = caption ? caption.textContent.trim() : `Einsatz ${id}`;
-            const labels = { backlog: 'offen', new: 'neu', escalation: 'Nachalarmierung' };
+            const labels = { backlog: 'offen', new: 'neu', escalation: 'Nachalarmierung', manual: 'von Hand' };
             return {
                 key: `m${id}`,
-                sig: reason === 'escalation' ? `m${id}|${JSON.stringify(missing)}` : `m${id}|start`,
+                sig: reason === 'escalation' ? `m${id}|${JSON.stringify(missing)}` : reason === 'manual' ? `m${id}|hand|${Date.now()}` : `m${id}|start`,
                 url: `/missions/${id}`,
                 type: 'mission',
-                id,
+                id: String(id),
                 missing,
                 priority: reason === 'escalation' ? 1 : 2,
                 at: Date.now(),
-                label: `${name} (${labels[reason]})`,
+                label: `${nameOf(id)} (${labels[reason]})`,
             };
         };
         // Neue fehlende Fahrzeuge, die beim letzten Öffnen noch nicht gefehlt haben?
@@ -3017,59 +3161,111 @@
             return Object.entries(missing).some(([name, count]) => count > (before[name] || 0));
         };
 
-        hookGame('missionMarkerAdd', marker => {
-            if (!marker || marker.id === undefined) return;
-            const id = String(marker.id);
-            if (marker.created_at) (shared.missionCreated = shared.missionCreated || {})[id] = marker.created_at;
-            const prev = known.get(id);
-            const cur = { state: marker.vehicle_state, missing: marker.missing_text || '', type: `${marker.mtid}|${marker.additive_overlays || ''}|${marker.overlay_index || ''}` };
-            known.set(id, cur);
-            if (!mode.active) return;
-            const list = panelList(document.getElementById(`mission_${id}`));
-            if (!listAllowed(list)) return;
-            // Alles da und nichts fehlt: wartende Einträge zu diesem Einsatz sind erledigt
-            if (cur.state === 2 && !cur.missing) {
-                delete mode.waiting[id];
-                return drop(`m${id}`);
+        // Neuer Stand eines Einsatzes (aus Meldung oder Abgleich): entscheidet, ob er in die Warteschlange kommt.
+        // „decided“: Ob der Einsatz neu ist, wurde schon entschieden (sonst fällt die Entscheidung, sobald die Liste feststeht).
+        const update = (cur, source) => {
+            const prev = missions.get(cur.id);
+            if (prev) {
+                // Fehlende Angaben aus dem alten Stand übernehmen (der Abgleich kennt z. B. weder Typ noch Erstellungszeit)
+                ['list', 'created', 'type', 'name'].forEach(key => (cur[key] = cur[key] || prev[key]));
+                if (cur.state === null || cur.state === undefined) cur.state = prev.state;
+                cur.decided = prev.decided;
             }
-            if (!prev) {
-                if (settings.dispatchNew) enqueue(missionItem(id, 'new', parseMissing(cur.missing)));
+            missions.set(cur.id, cur);
+            if (!mode.active || !cur.list) return;
+            const name = cur.name || `Einsatz ${cur.id}`;
+            const firstSight = !cur.decided;
+            cur.decided = true;
+            if (!listAllowed(cur.list)) {
+                if (firstSight) note(`übersprungen (${{ alliance: 'Verbandseinsatz', planned: 'geplanter Einsatz', other: 'andere Liste' }[cur.list] || cur.list}): ${name}`);
                 return;
             }
-            if (!settings.dispatchEscalation) return;
+            // Alles da und nichts fehlt: wartende Einträge zu diesem Einsatz sind erledigt
+            if (cur.state === 2 && !cur.missing) {
+                delete mode.waiting[cur.id];
+                return drop(`m${cur.id}`, `${name} ist versorgt`);
+            }
+            if (firstSight) {
+                if (!isNew(cur)) return note(`nicht neu (gab es schon vorher): ${name}`);
+                if (settings.dispatchNew) enqueue(missionItem(cur.id, 'new', parseMissing(cur.missing)));
+                return;
+            }
+            if (!settings.dispatchEscalation || !prev) return;
             const missing = parseMissing(cur.missing);
-            const spread = prev.type && cur.type !== prev.type && !/^undefined/.test(prev.type);
-            if ((cur.missing && cur.missing !== prev.missing && missingGrew(id, missing)) || spread) enqueue(missionItem(id, 'escalation', spread ? Object.assign({ Ausbreitung: Date.now() }, missing) : missing));
+            const spread = prev.type && cur.type && cur.type !== prev.type && !/^undefined/.test(prev.type);
+            if ((cur.missing && cur.missing !== prev.missing && missingGrew(cur.id, missing)) || spread) {
+                enqueue(missionItem(cur.id, 'escalation', spread ? Object.assign({ Ausbreitung: Date.now() }, missing) : missing));
+            }
+        };
+
+        hookGame('missionMarkerAdd', marker => {
+            if (!marker || marker.id === undefined) return;
+            if (marker.created_at) (shared.missionCreated = shared.missionCreated || {})[String(marker.id)] = marker.created_at;
+            const cur = recordFromMarker(marker);
+            // Liste noch unbekannt (Meldung ohne Besitzer): aus der Einsatzliste, sobald der Eintrag da ist
+            if (!cur.list) cur.list = panelList(panelOf(cur.id));
+            update(cur, 'marker');
         });
         hookGame('missionDelete', id => {
-            known.delete(String(id));
+            missions.delete(String(id));
             delete mode.waiting[String(id)];
-            drop(`m${id}`);
+            drop(`m${id}`, `${nameOf(id)} beendet`);
         });
-        hookGame('radioMessage', message => {
+
+        // Abgleich mit der Einsatzliste: holt nach, was über Meldungen nicht ankam (neue Einträge, fehlende Listenzuordnung, „versorgt“)
+        const scan = () => {
+            if (!mode.active) return;
+            document.querySelectorAll('#missions-panel-body .missionSideBarEntry').forEach(panel => {
+                if (panel.classList.contains('mission_deleted')) return;
+                const id = panel.getAttribute('mission_id') || panel.id.replace('mission_', '');
+                const prev = missions.get(id);
+                const cur = recordFromPanel(id, panel);
+                if (!prev) return update(cur, 'scan');
+                // Aus Meldungen bekannt, aber noch nicht entschieden (Liste fehlte): jetzt mit der Liste aus der Einsatzliste
+                if (!prev.decided) return update(Object.assign({}, prev, { list: prev.list || cur.list }), 'scan');
+                // Aus Meldungen bekannt: deren Angaben sind genauer – hier nur „versorgt“ nachziehen
+                if (prev.type) {
+                    if (cur.state === 2 && !cur.missing && prev.state !== 2) update(Object.assign({}, prev, { state: 2, missing: '' }), 'scan');
+                    return;
+                }
+                // Nur aus der Liste bekannt: Liste mit Liste vergleichen (gleiches Textformat)
+                if (prev.state !== cur.state || prev.missing !== cur.missing) update(cur, 'scan');
+            });
+        };
+        setInterval(scan, 2000);
+
+        // Fahrzeugtyp eines unbekannten (z. B. neu gekauften) Fahrzeugs einzeln nachfragen
+        const typeOf = async id => {
+            if (mode.vehicleType[id] !== undefined) return mode.vehicleType[id];
+            const vehicle = await fetchJson(`/api/vehicles/${id}`).catch(() => null);
+            if (vehicle && vehicle.vehicle_type !== undefined) mode.vehicleType[id] = vehicle.vehicle_type;
+            return mode.vehicleType[id];
+        };
+        hookGame('radioMessage', async message => {
             if (!message || message.type !== 'vehicle_fms' || message.user_id !== window.user_id) return;
             const was = mode.fms[message.id];
             mode.fms[message.id] = message.fms_real;
-            // Fahrzeug frei (Status 1/2): wartende Einsätze, denen genau dieser Typ fehlte, wieder öffnen
-            const type = mode.vehicleType[message.id];
-            if (mode.active && (message.fms_real === 1 || message.fms_real === 2) && type !== undefined) {
-                Object.entries(mode.waiting).forEach(([missionId, wait]) => {
-                    if (!wait.types.has(type)) return;
-                    const panel = document.getElementById(`mission_${missionId}`);
-                    if (!panel || panel.classList.contains('mission_deleted')) return delete mode.waiting[missionId];
-                    delete mode.waiting[missionId];
-                    const item = missionItem(missionId, 'escalation', {});
-                    item.sig = `m${missionId}|frei|${Date.now()}`;
-                    item.label = item.label.replace('(Nachalarmierung)', `(${wait.labels.join(', ')} wieder frei)`);
-                    enqueue(item);
-                });
-            }
-            if (message.fms_real !== 5) return drop(`v${message.id}`);
+            if (message.fms_real !== 5) drop(`v${message.id}`);
             // Ein Sprechwunsch zählt einmal, bis das Fahrzeug Status 5 wieder verlässt
-            if (was !== 5 && mode.active && settings.dispatchTransport) {
+            if (message.fms_real === 5 && was !== 5 && mode.active && settings.dispatchTransport) {
                 enqueue({ key: `v${message.id}`, sig: `v${message.id}|${Date.now()}`, url: `/vehicles/${message.id}`, type: 'vehicle', id: message.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${message.caption || message.id}` });
             }
+            // Fahrzeug frei (Status 1/2): wartende Einsätze, denen genau dieser Typ fehlte, wieder öffnen
+            if (!mode.active || (message.fms_real !== 1 && message.fms_real !== 2) || !Object.keys(mode.waiting).length) return;
+            const type = await typeOf(message.id);
+            if (type === undefined) return note(`Fahrzeugtyp unbekannt: ${message.caption || message.id}`);
+            Object.entries(mode.waiting).forEach(([missionId, wait]) => {
+                if (!wait.types.has(type)) return;
+                const panel = panelOf(missionId);
+                if (panel && panel.classList.contains('mission_deleted')) return delete mode.waiting[missionId];
+                delete mode.waiting[missionId];
+                const item = missionItem(missionId, 'escalation', {});
+                item.sig = `m${missionId}|frei|${Date.now()}`;
+                item.label = `${nameOf(missionId)} (${message.caption || 'Fahrzeug'} frei für ${wait.labels.join(', ')})`;
+                enqueue(item);
+            });
         });
+
         // Wird ein Fenster geschlossen, kommt das nächste dran
         hookGame('lightboxClose', () => setTimeout(processQueue, 100));
         setInterval(processQueue, 1000);
@@ -3086,25 +3282,27 @@
             mode.queue = [];
             mode.opened = new Set();
             mode.opened_missing = {};
-            note('Modus gestartet');
-            if (settings.dispatchBacklog) {
-                document.querySelectorAll('#missions-panel-body .missionSideBarEntry').forEach(panel => {
-                    if (!listAllowed(panelList(panel)) || panel.style.display === 'none' || panel.classList.contains('mission_deleted')) return;
-                    const id = panel.getAttribute('mission_id') || panel.id.replace('mission_', '');
-                    const state = panelState(panel);
-                    const missing = panelMissing(panel);
-                    if (state === 0 || (state !== 2 && missing)) enqueue(missionItem(id, 'backlog', parseMissing(missing)));
-                });
-            }
             mode.waiting = {};
-            {
-                const vehicles = await fetchJson('/api/vehicles').catch(() => []);
-                (Array.isArray(vehicles) ? vehicles : []).forEach(v => {
-                    mode.fms[v.id] = v.fms_real;
-                    mode.vehicleType[v.id] = v.vehicle_type;
-                    if (v.fms_real === 5 && settings.dispatchTransport) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
+            note('Modus gestartet');
+            scan();
+            if (settings.dispatchBacklog) {
+                // Offen: rot oder mit fehlenden Fahrzeugen – in der Reihenfolge der Einsatzliste, dann der Rest
+                const order = Array.from(document.querySelectorAll('#missions-panel-body .missionSideBarEntry')).map(p => p.getAttribute('mission_id') || p.id.replace('mission_', ''));
+                const ids = order.concat(Array.from(missions.keys()).filter(id => !order.includes(id)));
+                ids.forEach(id => {
+                    const rec = missions.get(id);
+                    const panel = panelOf(id);
+                    if (!rec || !listAllowed(rec.list || panelList(panel)) || (panel && (panel.style.display === 'none' || panel.classList.contains('mission_deleted')))) return;
+                    if (rec.state === 0 || (rec.state !== 2 && rec.missing)) enqueue(missionItem(id, 'backlog', parseMissing(rec.missing)));
                 });
             }
+            const vehicles = await fetchJson('/api/vehicles').catch(() => []);
+            (Array.isArray(vehicles) ? vehicles : []).forEach(v => {
+                mode.fms[v.id] = v.fms_real;
+                mode.vehicleType[v.id] = v.vehicle_type;
+                if (v.fms_real === 5 && settings.dispatchTransport) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
+            });
+            note(`${mode.queue.length} Einträge zum Start`);
             mode.starting = false;
             render();
             processQueue();
@@ -3117,8 +3315,8 @@
         render();
         const selections = document.querySelectorAll('.missions-panel-main .mission_selection');
         const anchor = selections[selections.length - 1];
-        if (anchor) anchor.after(button);
-        else document.getElementById('missions-panel-body').before(button);
+        if (anchor) anchor.after(wrap);
+        else document.getElementById('missions-panel-body').before(wrap);
     }
 
     // Leitstellen-Modus im Fenster: Leiste, Tasten und Knöpfe
@@ -3316,19 +3514,8 @@
     // Erstellungszeit der Einsätze: aus den Startdaten der Seite (missionMarkerAdd({...}) im Seitenquelltext) und aus späteren Meldungen
     function missionCreatedTimes() {
         const times = Object.assign({}, shared.missionCreated || {});
-        Array.from(document.scripts).forEach(script => {
-            const text = script.textContent || '';
-            if (!text.includes('missionMarkerAdd(')) return;
-            const pattern = /missionMarkerAdd\((\{.*?\})\);/g;
-            let match;
-            while ((match = pattern.exec(text))) {
-                try {
-                    const marker = JSON.parse(match[1]);
-                    if (marker.id && marker.created_at) times[String(marker.id)] = times[String(marker.id)] || marker.created_at;
-                } catch (e) {
-                    /* kein reines JSON – überspringen */
-                }
-            }
+        pageMarkers().forEach(marker => {
+            if (marker.id && marker.created_at) times[String(marker.id)] = times[String(marker.id)] || marker.created_at;
         });
         return times;
     }

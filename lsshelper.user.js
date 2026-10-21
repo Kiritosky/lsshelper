@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.27.2
+// @version      0.27.3
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -796,6 +796,8 @@
     const hotkeyChoices = [];
     // Noch offene Bedarfe der letzten Markierung (für den Leitstellen-Modus: worauf ein übersprungener Einsatz wartet)
     let lastDemands = null;
+    // Fehlendes, das kein Fahrzeug ist (Wasser, Personal …) – dann ist der Einsatz nicht „fertig“, auch wenn kein Fahrzeug fehlt
+    let lastExtraMissing = 0;
 
     // Verfügbarkeit laut Spiel (grüner Haken / rotes Kreuz an der AAO); null, solange das Spiel noch rechnet
     function aaoAvailable(aao) {
@@ -1012,6 +1014,7 @@
         }
         hotkeyChoices.length = 0;
         lastDemands = null;
+        lastExtraMissing = 0;
         const showName = byName => {
             hotkeyChoices.push([{ aao: byName[0], clicks: 1 }]);
             openTab(byName.map(a => mark(a, 'lsshelper-name'))[0]);
@@ -1071,6 +1074,7 @@
                 if (medical[key]) demands.push({ demand: medical[key], label: medical[key].label, need });
             });
             applyPresent(demands, present, 'driving');
+            lastExtraMissing = infos.length;
             markDemands(container, aaos, demands, infos, 'LSS Helper: Nachalarmierung – fehlende Fahrzeuge (Zahl an der AAO = so oft klicken):');
             return;
         }
@@ -2916,7 +2920,7 @@
             const type = getMissionType();
             const missions = type ? await getMissions().catch(() => ({})) : {};
             const mission = type ? missions[type] || missions[type.split(/[-/]/)[0]] : null;
-            if (!mission) return { open: [], unmet: [] };
+            if (!mission) return { open: [], unmet: [], known: false };
             demands = missionDemands(mission, document.querySelectorAll('.mission_patient').length).demands;
             applyPresent(demands, presentVehicles(), 'all');
             demands = demands.filter(d => d.need > 0 && !(d.chance !== undefined && d.chance < settings.minChance));
@@ -2930,7 +2934,7 @@
                 })
         );
         const unmet = demands.filter(d => d.demand && d.demand.types.length && !d.demand.types.some(type => free.has(type))).map(d => ({ label: d.demand.label || d.label, types: d.demand.types }));
-        return { open: demands, unmet };
+        return { open: demands, unmet, known: true };
     }
 
     // Startdaten der Hauptseite: das Spiel ruft beim Laden missionMarkerAdd({...}) für jeden Einsatz auf
@@ -2979,7 +2983,9 @@
             const onTheWay = Array.from(driving.get(String(id)) || []).map(v => mode.vehicleType[v]);
             const result = {};
             Object.entries(missing).forEach(([name, count]) => {
-                const demand = DEMAND_BY_TEXT[normalize(name)];
+                const key = normalize(name);
+                const medical = MEDICAL.default;
+                const demand = DEMAND_BY_TEXT[key] || { rtw: medical.transport, nef: medical.nef, rth: medical.rth, ktw: medical.ktw, lna: medical.lna, 'kdow lna': medical.lna, orgl: medical.orgl, 'kdow orgl': medical.orgl }[key];
                 let left = count;
                 if (demand) {
                     onTheWay.forEach((type, i) => {
@@ -3532,8 +3538,16 @@
             (async () => {
                 // Warten, bis die Markierung gerechnet hat (höchstens 5 Sekunden)
                 for (let i = 0; i < 25 && !hotkeyReady; i++) await sleep(200);
-                const status = await demandStatus().catch(() => ({ open: [], unmet: [] }));
-                if (!status.open.length || status.unmet.length < status.open.length || document.querySelector('.vehicle_checkbox:checked')) return;
+                const status = await demandStatus().catch(() => ({ open: [], unmet: [], known: false }));
+                if (document.querySelector('.vehicle_checkbox:checked')) return;
+                // Laut Markierung fehlt nichts mehr (alles alarmiert bzw. auf Anfahrt): nicht aufhalten, nicht auf die Warteliste
+                if (status.known && !status.open.length && !lastExtraMissing) {
+                    info.textContent = 'Nichts mehr nötig – alles alarmiert oder auf Anfahrt – weiter …';
+                    note('übersprungen, nichts mehr nötig (alles alarmiert oder auf Anfahrt)');
+                    await sleep(700);
+                    return skip();
+                }
+                if (!status.open.length || status.unmet.length < status.open.length) return;
                 info.textContent = `Nichts frei (${status.unmet.map(u => u.label).join(', ')}) – überspringe …`;
                 note(`automatisch übersprungen, nichts frei: ${status.unmet.map(u => u.label).join(', ')}`);
                 await sleep(700);

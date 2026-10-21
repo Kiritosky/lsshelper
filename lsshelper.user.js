@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.24.0
+// @version      0.24.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -50,8 +50,8 @@
         dispatchAlliance: false,
         dispatchPlanned: false,
         dispatchButtons: true,
-        dispatchKeyNext: 'x',
-        dispatchKeySkip: 's',
+        dispatchKeyNext: 'd',
+        dispatchKeySkip: 'f',
     };
     // Aufbau der Einstellungsseite: [Schlüssel, Titel, Erklärung, abhängig von]
     const SETTINGS_SECTIONS = [
@@ -116,6 +116,11 @@
         Object.keys(DEFAULTS).forEach(key => {
             if (typeof saved[key] === typeof DEFAULTS[key]) settings[key] = saved[key];
         });
+        // Bis 0.24.0 waren X/S Standard – X schließt im Spiel aber das Fenster, daher auf die neuen Standards umstellen
+        if (saved.dispatchKeyNext === 'x' && saved.dispatchKeySkip === 's') {
+            settings.dispatchKeyNext = DEFAULTS.dispatchKeyNext;
+            settings.dispatchKeySkip = DEFAULTS.dispatchKeySkip;
+        }
     } catch (e) {
         /* kaputte Einstellungen -> Standard */
     }

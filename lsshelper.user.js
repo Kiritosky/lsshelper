@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.5
+// @version      0.28.6
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -3429,6 +3429,9 @@
                 return;
             }
             blockedSince = 0;
+            // Sprechwünsche, deren Fahrzeug Status 5 schon verlassen hat, nicht mehr öffnen
+            mode.queue = mode.queue.filter(q => q.type !== 'vehicle' || mode.fms[q.id] === undefined || mode.fms[q.id] === 5);
+            if (!mode.pendingUrl && !mode.queue.length) return render();
             const url = mode.pendingUrl || mode.takeNext().url;
             mode.pendingUrl = null;
             mode.expectUrl = url;
@@ -3675,6 +3678,19 @@
         }
         if (isMission && /^\/vehicles\/\d+/.test(referrer) && mode.expectUrl !== location.pathname && Date.now() - (mode.vehicleSeenAt || 0) < 5 * 60 * 1000) {
             return forward('Umleitung nach Sprechwunsch übersprungen');
+        }
+        if (isVehicle && /^\/vehicles\/\d+\/?$/.test(location.pathname)) {
+            const label = (document.querySelector('h1') || {}).textContent || location.pathname;
+            // Fahrzeugseiten, die nicht der Modus geöffnet hat, ins Protokoll – so lässt sich sehen, woher sie kommen
+            if (mode.expectUrl !== location.pathname) note(`Fahrzeugseite ${label.trim()} geöffnet (nicht vom Modus${referrer && referrer !== '/' ? `, von ${referrer}` : ''})`);
+            // Vom Modus geöffnet, aber kein Transport mehr offen (schon erledigt): gleich weiter
+            else {
+                const request = () => document.querySelector('[data-transport-request], a[href*="/patient/"], a[href*="/gefangener/"], .alert-success');
+                if (!request())
+                    return setTimeout(() => {
+                        if (!request()) forward(`Sprechwunsch ${label.trim()} schon erledigt – weiter`);
+                    }, 1200);
+            }
         }
         addStyles();
         const flash = text => {

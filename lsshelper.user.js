@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.8
+// @version      0.29.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -55,6 +55,7 @@
         dispatchKeySkip: 'f',
         dispatchKeyShare: 'g',
         dispatchAutoSkip: true,
+        dispatchShareOnAlarm: false,
         tcCrew: true,
         tcTransport: true,
         tcExpiring: true,
@@ -80,6 +81,7 @@
                 ['dispatchAlliance', 'Auch Verbandseinsätze'],
                 ['dispatchPlanned', 'Auch geplante Einsätze'],
                 ['dispatchButtons', 'Knöpfe im Fenster', 'Für die Bedienung ohne Tastatur, z. B. am iPad'],
+                ['dispatchShareOnAlarm', 'Beim Alarmieren auch im Verband freigeben', 'Alarm & weiter (Taste oder Knopf) gibt den Einsatz zugleich im Verband frei'],
                 ['dispatchKeyNext', 'Taste: alarmieren & weiter'],
                 ['dispatchKeySkip', 'Taste: überspringen'],
                 ['dispatchKeyShare', 'Taste: im Verband freigeben & weiter', 'Ohne zu alarmieren'],
@@ -3760,6 +3762,12 @@
             await preferNonReserve();
             // Teilalarm: was danach noch fehlt und nicht frei ist, kommt auf die Warteliste
             await rememberUnmet();
+            // Auf Wunsch zugleich im Verband freigeben (vor dem Alarm, danach lädt das Fenster schon den nächsten Einsatz)
+            if (settings.dispatchShareOnAlarm && missionId) {
+                info.textContent = 'Gebe im Verband frei …';
+                const shared = await fetch(`/missions/${missionId}/alliance`, { credentials: 'same-origin' }).catch(() => null);
+                if (!shared || !shared.ok) note(`Freigeben im Verband hat nicht geklappt: ${getMissionTitle() || missionId}`);
+            }
             const next = mode.takeNext();
             const field = document.getElementById('next_mission_id');
             // Nächster Einsatz: über das Feld des Spiels; sonst (Sprechwunsch) nach dem Alarmieren selbst hinspringen
@@ -3813,7 +3821,7 @@
                 bar.append(btn);
             };
             if (isMission) add(`AAO${key(settings.hotkey)}`, 'btn-default', () => triggerHotkey());
-            if (isMission) add(`Alarm & weiter${key(settings.dispatchKeyNext)}`, 'btn-success', alarmNext);
+            if (isMission) add(`${settings.dispatchShareOnAlarm ? 'Alarm + Verband' : 'Alarm'} & weiter${key(settings.dispatchKeyNext)}`, 'btn-success', alarmNext);
             if (isMission) add(`Verband & weiter${key(settings.dispatchKeyShare)}`, 'btn-primary', shareNext);
             add(`Überspringen${key(settings.dispatchKeySkip)}`, 'btn-default', skip);
             add('■', 'btn-danger', stop);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.30.2
+// @version      0.31.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -533,6 +533,28 @@
         });
         return best;
     }
+
+    // Gleichnamige Einsätze (z. B. „Hautkontakt mit giftiger Pflanze“ normal und als Bergrettung):
+    // die Variante steht als Zusatz in Klammern im AAO-Namen, z. B. „… (Bergwacht)“
+    const VARIANT_MARKS = { mountain_missions: { label: 'Bergwacht', re: /berg/i }, ocean_missions: { label: 'Seenot', re: /see|küste|wasser/i } };
+    const missionVariant = mission => ((mission && mission.g) || []).find(g => VARIANT_MARKS[g]) || null;
+    // Hat der Einsatz einen gleichnamigen Zwilling mit anderer Variante?
+    function hasVariantTwin(mission, missions) {
+        if (!mission || !missions) return false;
+        const name = normalizeTitle(mission.n);
+        const own = missionVariant(mission);
+        return Object.values(missions).some(m => m !== mission && normalizeTitle(m.n) === name && missionVariant(m) !== own);
+    }
+    // Passt der AAO-Name zur Variante? Ohne Zwilling immer; sonst muss der Zusatz (in Klammern) passen bzw. fehlen
+    function variantFits(caption, mission, missions) {
+        if (!hasVariantTwin(mission, missions)) return true;
+        const extra = (String(caption).match(/[([][^)\]]*[)\]]/g) || []).join(' ');
+        const variant = missionVariant(mission);
+        if (variant) return VARIANT_MARKS[variant].re.test(extra);
+        return !Object.values(VARIANT_MARKS).some(v => v.re.test(extra));
+    }
+    // Name des Einsatzes für eine neue AAO, mit Zusatz, wenn es einen gleichnamigen Zwilling gibt
+    const variantName = (mission, missions) => (hasVariantTwin(mission, missions) && missionVariant(mission) ? `${mission.n} (${VARIANT_MARKS[missionVariant(mission)].label})` : mission.n);
 
     function findByName(aaos, names) {
         const wanted = names.map(normalizeTitle).filter(n => n.length > 2);
@@ -1256,7 +1278,12 @@
 
         // 1) AAO mit dem Namen des Einsatzes (ohne Einsatzdaten, sofort)
         if (settings.markName && !isFollowUp && !dispatched) {
-            const byName = findByName(aaos, [title]);
+            let byName = findByName(aaos, [title]);
+            if (byName.length && type) {
+                const all = await getMissions().catch(() => ({}));
+                const own = all[type] || all[type.split(/[-/]/)[0]];
+                byName = byName.filter(a => variantFits(a.textContent, own, all));
+            }
             if (byName.length) return showName(byName);
         }
 
@@ -1293,7 +1320,7 @@
             renderPanel(container, 'LSS Helper: Keine passende AAO und keine Einsatzdaten gefunden.', []);
             return;
         }
-        const byName = findByName(aaos, [title, mission.n]);
+        const byName = findByName(aaos, [title, mission.n]).filter(a => variantFits(a.textContent, mission, missions));
         if (settings.markName && !dispatched && byName.length) return showName(byName);
 
         // 3) Fahrzeuganforderungen des Einsatztyps
@@ -1311,7 +1338,7 @@
             create.className = 'btn btn-xs btn-primary';
             create.href = `/aaos/new?${AAO_PARAM}=${encodeURIComponent(type)}`;
             create.target = '_blank';
-            create.textContent = `AAO „${mission.n}“ anlegen`;
+            create.textContent = `AAO „${variantName(mission, missions)}“ anlegen`;
             // Einsatzdaten gleich mitgeben, damit das Formular nicht erst die ganze Einsatzliste laden muss
             create.addEventListener('mousedown', () => {
                 saveCategoryStyles(container);
@@ -1590,7 +1617,8 @@
             input.dispatchEvent(new Event('change', { bubbles: true }));
         };
         // Namensschema: "Einsatzname [max. Patienten/davon evtl. mit Notarzt]", ohne Notarzt nur "[max. Patienten]"
-        setValue(caption, mission.p ? `${mission.n} [${mission.p[0]}${mission.p[2] ? `/${mission.p[0]}` : ''}]` : mission.n);
+        const name = variantName(mission, await getMissions().catch(() => null));
+        setValue(caption, mission.p ? `${name} [${mission.p[0]}${mission.p[2] ? `/${mission.p[0]}` : ''}]` : name);
 
         const amounts = new Map();
         const items = [];
@@ -2623,17 +2651,19 @@
         await sleep(0);
 
         // Fehlende AAOs: Einsätze, die du bekommen kannst, für die aber keine AAO mit passendem Namen existiert
-        const variants = aaos.map(aao => nameVariants(aao.caption));
+        const variants = aaos.map(aao => ({ caption: aao.caption, names: nameVariants(aao.caption) }));
         const seen = new Set();
         const missing = [];
         baseMissions(missions).forEach(([id, mission]) => {
             const key = normalizeTitle(mission.n);
-            if (seen.has(key)) return;
-            seen.add(key);
+            // Gleichnamige Einsätze mit anderer Variante (z. B. Bergrettung) brauchen eine eigene AAO
+            const seenKey = `${key}|${hasVariantTwin(mission, missions) ? missionVariant(mission) : ''}`;
+            if (seen.has(seenKey)) return;
+            seen.add(seenKey);
             const access = missionAccess(mission, buildings);
             if (access.capped || access.mainMissing !== null || access.unmet.length) return;
             const words = key.split(' ');
-            if (variants.some(v => nameScore(v, words) >= 0)) return;
+            if (variants.some(v => nameScore(v.names, words) >= 0 && variantFits(v.caption, mission, missions))) return;
             missing.push({ id, mission, uncertain: access.unknown.length > 0 });
         });
         missing.sort((a, b) => (a.mission.c[0] || '').localeCompare(b.mission.c[0] || '') || a.mission.n.localeCompare(b.mission.n));
@@ -2656,7 +2686,7 @@
                 shown.slice(0, LIMIT).forEach(entry => {
                     const current = CATEGORY_LABELS[entry.mission.c[0]] || entry.mission.c[0] || 'Sonstige';
                     if (current !== category) list.append(dashEl('div', 'lsshelper-dash-station', (category = current)));
-                    const row = dashEl('div', 'lsshelper-dash-note', `${entry.mission.n}${entry.uncertain ? ' *' : ''} `);
+                    const row = dashEl('div', 'lsshelper-dash-note', `${variantName(entry.mission, missions)}${entry.uncertain ? ' *' : ''} `);
                     row.append(
                         dashButton('anlegen', 'lsshelper-btn-quiet', () => {
                             try {

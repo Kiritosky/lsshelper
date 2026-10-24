@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.30.0
+// @version      0.30.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1669,6 +1669,8 @@
     // ... sowie Fahrzeugnamen, wo ein Fahrzeug gekauft werden kann, und offizielle Gebäudenamen
     // reqForms: Einzahl und Mehrzahl jeder Anforderung (normalisiert) -> Anforderungs-Schlüssel, für die Namen in „fehlende Fahrzeuge“
     const dataLabels = { req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
+    // Fahrzeugtyp -> Lehrgänge, die die ganze Besatzung braucht (sonst nur einzelne Plätze, z. B. 1 Notarzt im NEF)
+    const TRAINING_ALL = {};
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,
@@ -1678,6 +1680,7 @@
     function applyVehicleData(data) {
         if (!data || !data.staff) return;
         ['req', 'reqForms', 'pre', 'vehicles', 'possible', 'buildings'].forEach(key => Object.assign(dataLabels[key], data[key] || {}));
+        Object.assign(TRAINING_ALL, data.trainingAll || {});
         Object.entries(data.staff).forEach(([type, staff]) => {
             STAFF[type] = staff;
             if (data.training[type]) TRAINING[type] = data.training[type];
@@ -1692,9 +1695,9 @@
         } catch (e) {
             /* neu laden */
         }
-        if (cached && Date.now() - cached.t < CACHE_TTL) return;
+        if (cached && Date.now() - cached.t < CACHE_TTL && cached.trainingAll) return;
         const vehicles = await (await fetch('https://api.lss-manager.de/de_DE/vehicles')).json();
-        const data = { t: Date.now(), staff: {}, training: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
+        const data = { t: Date.now(), staff: {}, training: {}, trainingAll: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
         // Die Zusatzquellen dürfen fehlen – dann bleibt es bei den eingebauten Bezeichnungen
         await sleep(150);
         const labels = await fetch('https://api.lss-manager.de/de_DE/einsaetze').then(r => r.json()).catch(() => ({}));
@@ -1721,6 +1724,7 @@
             Object.values(vehicle.staff.training || {}).forEach(school => Object.entries(school).forEach(([key, rule]) => {
                 const amount = rule.all ? 1 : rule.min || 0;
                 if (amount > 0) required[key] = amount;
+                if (rule.all) (data.trainingAll[type] = data.trainingAll[type] || []).push(key);
             }));
             if (Object.keys(required).length) data.training[type] = required;
         });
@@ -4137,15 +4141,21 @@
                     .map(type => dataLabels.vehicles[type]);
                 return result.push({ key, name, kind: 'none', idle, trained: trained.length, buyable: Array.from(new Set(buyable)).slice(0, 4) });
             }
+            // Offene Plätze für Ausgebildete: so viele, wie das Fahrzeug davon braucht (ganze Besatzung oder einzelne Plätze),
+            // abzüglich der schon Ausgebildeten darauf; Platz ist, wo ein Sitz frei ist oder Unausgebildete sitzen
             const free = matching
                 .map(v => {
                     const seats = v.max_personnel_override === null || v.max_personnel_override === undefined ? (STAFF[v.vehicle_type] || [0, 0])[1] : v.max_personnel_override;
-                    return { vehicle: v, free: Math.max(0, seats - persons.filter(p => p.bound === v.caption).length) };
+                    const bound = persons.filter(p => p.bound === v.caption);
+                    const trainedOn = bound.filter(p => p.edu.has(key)).length;
+                    const needed = (TRAINING_ALL[v.vehicle_type] || []).includes(key) ? seats : TRAINING[v.vehicle_type][key] || 1;
+                    const room = Math.max(0, seats - bound.length) + bound.length - trainedOn;
+                    return { vehicle: v, free: Math.max(0, Math.min(needed - trainedOn, room)) };
                 })
                 .filter(f => f.free > 0);
-            result.push({ key, name, kind: free.length ? 'free' : 'full', idle, trained: trained.length, free, matching });
+            result.push({ key, name, kind: free.length ? 'free' : 'reserve', idle, trained: trained.length, free, matching });
         });
-        return result.sort((a, b) => ['free', 'none', 'full'].indexOf(a.kind) - ['free', 'none', 'full'].indexOf(b.kind) || b.idle - a.idle);
+        return result.sort((a, b) => ['free', 'none', 'reserve'].indexOf(a.kind) - ['free', 'none', 'reserve'].indexOf(b.kind) || b.idle - a.idle);
     }
 
     async function renderTrainingTool(ctx) {
@@ -4172,7 +4182,7 @@
             if (detail) line.append(dashEl('small', '', detail));
             return line;
         };
-        const counts = { free: 0, none: 0, full: 0 };
+        const counts = { free: 0, none: 0, reserve: 0 };
         const cards = [];
         for (const [index, building] of stations.entries()) {
             ctx.status(`Lese Personal … ${index + 1}/${stations.length} (${building.caption})`);
@@ -4195,13 +4205,13 @@
                 const lead = `${item.name}: ${item.idle} von ${item.trained} ohne passendes Fahrzeug`;
                 if (item.kind === 'none') card.append(row(lead, `/buildings/${building.id}`, `kein Fahrzeug dafür an der Wache${item.buyable.length ? ` – z. B. ${item.buyable.join(', ')}` : ''}`));
                 else if (item.kind === 'free') {
-                    card.append(row(lead, null, 'passendes Fahrzeug hat freie Plätze – antippen zum Zuweisen:'));
-                    item.free.forEach(f => card.append(row(`→ ${f.vehicle.caption}`, `/vehicles/${f.vehicle.id}/zuweisung`, `${f.free} ${f.free === 1 ? 'Platz' : 'Plätze'} frei`)));
+                    card.append(row(lead, null, 'diese Fahrzeuge brauchen noch Ausgebildete – antippen zum Zuweisen:'));
+                    item.free.forEach(f => card.append(row(`→ ${f.vehicle.caption}`, `/vehicles/${f.vehicle.id}/zuweisung`, `noch ${f.free} ${f.free === 1 ? 'Platz' : 'Plätze'} für ${item.name}`)));
                 }
-                else card.append(row(lead, null, `alle Plätze auf ${item.matching.map(v => v.caption).join(', ')} belegt – weiteres Fahrzeug nötig`));
+                else card.append(row(lead, null, `Reserve: ${item.matching.map(v => v.caption).join(', ')} ${item.matching.length === 1 ? 'hat' : 'haben'} schon genug Ausgebildete – überzählig (z. B. für ein weiteres Fahrzeug)`));
             });
         });
-        ctx.status(`${cards.length} Wachen: ${counts.free} könnten sofort zugewiesen werden, ${counts.none} ohne passendes Fahrzeug, ${counts.full} ohne freien Platz.`);
+        ctx.status(`${cards.length} Wachen: ${counts.free} sofort zuweisbar, ${counts.none} ohne passendes Fahrzeug an der Wache, ${counts.reserve} Reserve.`);
         ctx.body.append(
             dashButton('Neu lesen', 'lsshelper-btn-quiet', () => {
                 forgetFleet();

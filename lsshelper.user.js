@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.7
+// @version      0.28.8
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -2959,6 +2959,17 @@
      * Feature: Weiterleitung zum nächsten Sprechwunsch
      * ------------------------------------------------------------------ */
 
+    // LSS Manager V4 mit „Erweiterte Sprechwünsche“ klickt nach der Wahl selbst weiter – dann nicht ein zweites Mal
+    function lssmHandlesTransport() {
+        try {
+            const lssm = window.lssmv4 || window.top.lssmv4;
+            const modules = lssm && lssm.$stores && lssm.$stores.modules && lssm.$stores.modules.modules;
+            return !!(modules && modules.enhancedTransportRequests && modules.enhancedTransportRequests.active);
+        } catch (e) {
+            return false;
+        }
+    }
+
     // Nach der Wahl von Krankenhaus oder Zelle: weiter zum nächsten Sprechwunsch, sonst zurück zum Einsatz, sonst Fenster schließen
     function nextTransport() {
         if (!settings.nextTransport) return;
@@ -2980,27 +2991,37 @@
         } catch (e) {
             /* fremder Ursprung */
         }
+        // Im selben Fenster weiter statt den Link anzuklicken (der würde ein weiteres Fenster öffnen)
+        const navigate = link => {
+            if (window.lsshelperNavigating) return;
+            window.lsshelperNavigating = true;
+            location.href = new URL(link.getAttribute('href'), location.origin).pathname;
+        };
         if (afterChoice && mode && mode.active) {
             return setTimeout(() => {
+                if (window.lsshelperNavigating) return;
+                // LSS Manager übernimmt das Weiterklicken: der nächste Sprechwunsch wird dann beim Laden der Seite aus der Schlange genommen
+                if (lssmHandlesTransport() && (next || mission)) return;
                 // Zeigt das Spiel einen weiteren Sprechwunsch, geht der vor (Transporte vor Ausbreitungen)
                 if (next) {
                     const url = new URL(next.getAttribute('href'), location.origin).pathname;
                     if (mode.takeKey) mode.takeKey(`v${url.match(/\d+/)[0]}`, 'Sprechwunsch (nächster laut Spiel)');
                     mode.expectUrl = url;
-                    location.href = url;
-                    return;
+                    return navigate(next);
                 }
                 const item = mode.takeNext();
                 if (item) {
                     mode.expectUrl = item.url;
+                    window.lsshelperNavigating = true;
                     location.href = item.url;
                 } else if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
             }, 300);
         }
         setTimeout(() => {
-            if (next) return next.click();
+            if (window.lsshelperNavigating || lssmHandlesTransport()) return;
+            if (next) return navigate(next);
             if (!afterChoice) return;
-            if (mission) return mission.click();
+            if (mission) return navigate(mission);
             if (typeof window.tellParent === 'function') window.tellParent('lightboxClose();');
         }, 300);
     }
@@ -3300,7 +3321,9 @@
                     return false;
                 }
             });
-        const windowOpen = () => Date.now() - lastOpen < 1500 || !!blockingFrame();
+        // LSS Manager (Redesign) zeigt Fahrzeugseiten u. a. in eigenen Fenstern ohne Spiel-iframe – die zählen genauso als offen
+        const lssmWindow = () => Array.from(document.querySelectorAll('#modals-container > .vm--container')).find(el => el.getClientRects().length);
+        const windowOpen = () => Date.now() - lastOpen < 1500 || !!blockingFrame() || !!lssmWindow();
 
         // ----- Bedienung im Hauptfenster: Start/Stopp und Übersicht -----
         const wrap = document.createElement('div');
@@ -3438,7 +3461,7 @@
                 if (!blockedSince) blockedSince = Date.now();
                 else if (Date.now() - blockedSince > 30000) {
                     blockedSince = Date.now();
-                    note(`… wartet, weil ein Fenster offen ist${frame ? ` (${new URL(frame.getAttribute('src') || '', location.origin).pathname})` : ''}`);
+                    note(`… wartet, weil ein Fenster offen ist${frame ? ` (${new URL(frame.getAttribute('src') || '', location.origin).pathname})` : lssmWindow() ? ' (Fenster vom LSS Manager)' : ''}`);
                 }
                 return;
             }
@@ -3695,6 +3718,12 @@
         }
         if (isVehicle && /^\/vehicles\/\d+\/?$/.test(location.pathname)) {
             const label = (document.querySelector('h1') || {}).textContent || location.pathname;
+            const vehicleKey = `v${location.pathname.match(/\d+/)[0]}`;
+            // Von woanders geöffnet (z. B. LSS Manager oder Spiel): der Modus öffnet diesen Sprechwunsch nicht noch einmal
+            if (mode.expectUrl !== location.pathname && mode.takeKey && (mode.queue || []).some(q => q.key === vehicleKey)) {
+                mode.takeKey(vehicleKey, `Sprechwunsch ${label.trim()}`);
+                mode.expectUrl = location.pathname;
+            }
             // Fahrzeugseiten, die nicht der Modus geöffnet hat, ins Protokoll – so lässt sich sehen, woher sie kommen
             if (mode.expectUrl !== location.pathname) note(`Fahrzeugseite ${label.trim()} geöffnet (nicht vom Modus${referrer && referrer !== '/' ? `, von ${referrer}` : ''})`);
             // Vom Modus geöffnet, aber kein Transport mehr offen (schon erledigt): gleich weiter

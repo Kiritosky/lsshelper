@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.30.1
+// @version      0.30.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -4141,14 +4141,15 @@
                     .map(type => dataLabels.vehicles[type]);
                 return result.push({ key, name, kind: 'none', idle, trained: trained.length, buyable: Array.from(new Set(buyable)).slice(0, 4) });
             }
-            // Offene Plätze für Ausgebildete: so viele, wie das Fahrzeug davon braucht (ganze Besatzung oder einzelne Plätze),
-            // abzüglich der schon Ausgebildeten darauf; Platz ist, wo ein Sitz frei ist oder Unausgebildete sitzen
+            // Offene Plätze für Ausgebildete: so viele, wie das Fahrzeug zum Ausrücken braucht – bei „alle brauchen den Lehrgang“
+            // die Mindestbesatzung (meist 1), sonst die verlangte Zahl –, abzüglich der schon Ausgebildeten darauf.
+            // Platz ist, wo ein Sitz frei ist oder Unausgebildete sitzen. Wer darüber hinaus ausgebildet ist, ist überzählig.
             const free = matching
                 .map(v => {
                     const seats = v.max_personnel_override === null || v.max_personnel_override === undefined ? (STAFF[v.vehicle_type] || [0, 0])[1] : v.max_personnel_override;
                     const bound = persons.filter(p => p.bound === v.caption);
                     const trainedOn = bound.filter(p => p.edu.has(key)).length;
-                    const needed = (TRAINING_ALL[v.vehicle_type] || []).includes(key) ? seats : TRAINING[v.vehicle_type][key] || 1;
+                    const needed = Math.min(seats, (TRAINING_ALL[v.vehicle_type] || []).includes(key) ? Math.max(1, (STAFF[v.vehicle_type] || [1])[0]) : TRAINING[v.vehicle_type][key] || 1);
                     const room = Math.max(0, seats - bound.length) + bound.length - trainedOn;
                     return { vehicle: v, free: Math.max(0, Math.min(needed - trainedOn, room)) };
                 })
@@ -4205,13 +4206,13 @@
                 const lead = `${item.name}: ${item.idle} von ${item.trained} ohne passendes Fahrzeug`;
                 if (item.kind === 'none') card.append(row(lead, `/buildings/${building.id}`, `kein Fahrzeug dafür an der Wache${item.buyable.length ? ` – z. B. ${item.buyable.join(', ')}` : ''}`));
                 else if (item.kind === 'free') {
-                    card.append(row(lead, null, 'diese Fahrzeuge brauchen noch Ausgebildete – antippen zum Zuweisen:'));
+                    card.append(row(lead, null, 'diese Fahrzeuge können ohne sie nicht ausrücken – antippen zum Zuweisen:'));
                     item.free.forEach(f => card.append(row(`→ ${f.vehicle.caption}`, `/vehicles/${f.vehicle.id}/zuweisung`, `noch ${f.free} ${f.free === 1 ? 'Platz' : 'Plätze'} für ${item.name}`)));
                 }
-                else card.append(row(lead, null, `Reserve: ${item.matching.map(v => v.caption).join(', ')} ${item.matching.length === 1 ? 'hat' : 'haben'} schon genug Ausgebildete – überzählig (z. B. für ein weiteres Fahrzeug)`));
+                else card.append(row(lead, null, `überzählig: ${item.matching.map(v => v.caption).join(', ')} ${item.matching.length === 1 ? 'ist' : 'sind'} schon einsatzbereit besetzt – reicht für ein weiteres Fahrzeug oder als mehr Besatzung`));
             });
         });
-        ctx.status(`${cards.length} Wachen: ${counts.free} sofort zuweisbar, ${counts.none} ohne passendes Fahrzeug an der Wache, ${counts.reserve} Reserve.`);
+        ctx.status(`${cards.length} Wachen: ${counts.free} fehlen auf ihrem Fahrzeug, ${counts.none} ohne passendes Fahrzeug an der Wache, ${counts.reserve} überzählig.`);
         ctx.body.append(
             dashButton('Neu lesen', 'lsshelper-btn-quiet', () => {
                 forgetFleet();

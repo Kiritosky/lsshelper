@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.32.1
+// @version      0.32.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -3833,6 +3833,20 @@
             if (vehicle && vehicle.vehicle_type !== undefined) mode.vehicleType[id] = vehicle.vehicle_type;
             return mode.vehicleType[id];
         };
+        // Status 5 ist nicht immer ein Transport: Bei einer Ausbreitung melden sich z. B. Fahrzeuge vor Ort mit Status 5.
+        // Nur Fahrzeuge mit echter Transportanfrage (Patient, Gefangener, Anhänger) kommen in die Schlange.
+        const enqueueTransport = async (id, caption, sig) => {
+            let request = true;
+            try {
+                const doc = await fetchDoc(`/vehicles/${id}`);
+                request = !!doc.querySelector('[data-transport-request]');
+            } catch (e) {
+                /* im Zweifel öffnen */
+            }
+            if (!mode.active || mode.fms[id] !== 5) return;
+            if (!request) return note(`Status 5 ohne Transport (z. B. Ausbreitung): ${caption} – nicht geöffnet`);
+            enqueue({ key: `v${id}`, sig, url: `/vehicles/${id}`, type: 'vehicle', id, priority: 0, at: Date.now(), label: `Sprechwunsch ${caption}` });
+        };
         hookGame('radioMessage', async message => {
             if (!message || message.type !== 'vehicle_fms' || message.user_id !== window.user_id) return;
             const was = mode.fms[message.id];
@@ -3841,9 +3855,7 @@
             if (message.fms_real === 3 && mode.vehicleType[message.id] === undefined) typeOf(message.id);
             if (message.fms_real !== 5) drop(`v${message.id}`);
             // Ein Sprechwunsch zählt einmal, bis das Fahrzeug Status 5 wieder verlässt
-            if (message.fms_real === 5 && was !== 5 && mode.active && settings.dispatchTransport) {
-                enqueue({ key: `v${message.id}`, sig: `v${message.id}|${Date.now()}`, url: `/vehicles/${message.id}`, type: 'vehicle', id: message.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${message.caption || message.id}` });
-            }
+            if (message.fms_real === 5 && was !== 5 && mode.active && settings.dispatchTransport) enqueueTransport(message.id, message.caption || message.id, `v${message.id}|${Date.now()}`);
             // Fahrzeug frei (Status 1/2): wartende Einsätze, denen genau dieser Typ fehlte, wieder öffnen
             if (!mode.active || (message.fms_real !== 1 && message.fms_real !== 2) || !Object.keys(mode.waiting).length) return;
             const type = await typeOf(message.id);
@@ -3892,12 +3904,14 @@
             }
             const vehicles = await fetchJson('/api/vehicles').catch(() => []);
             driving.clear();
+            const transports = [];
             (Array.isArray(vehicles) ? vehicles : []).forEach(v => {
                 mode.fms[v.id] = v.fms_real;
                 mode.vehicleType[v.id] = v.vehicle_type;
                 if (v.fms_real === 3 && v.target_type === 'mission' && v.target_id) setDriving(v.id, v.target_id);
-                if (v.fms_real === 5 && settings.dispatchTransport) enqueue({ key: `v${v.id}`, sig: `v${v.id}|start`, url: `/vehicles/${v.id}`, type: 'vehicle', id: v.id, priority: 0, at: Date.now(), label: `Sprechwunsch ${v.caption}` });
+                if (v.fms_real === 5 && settings.dispatchTransport) transports.push(v);
             });
+            for (const v of transports) await enqueueTransport(v.id, v.caption, `v${v.id}|start`);
             note(`${mode.queue.length} Einträge zum Start`);
             mode.starting = false;
             render();

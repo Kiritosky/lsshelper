@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.32.0
+// @version      0.32.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1273,18 +1273,20 @@
             if (patientNeeds.ktw) demands.push({ demand: medical.ktw, label: 'KTW (1 pro Patient)', need: patientNeeds.ktw, scope: 'all' });
             if (patientNeeds.transportKtw) demands.push({ demand: medical.transportKtw, label: 'RTW oder KTW (1 pro Patient)', need: patientNeeds.transportKtw, scope: 'all' });
             if (expected > ktwPatients) demands.push({ demand: transport, label: waitingFor > 0 ? `RTW (1 pro Patient, ${waitingFor} noch unterwegs)` : 'RTW (1 pro Patient)', need: expected - ktwPatients, scope: 'all' });
-            ['nef', 'rth', 'lna', 'orgl'].forEach(key => {
+            // Am Übergabeort braucht es weder LNA noch OrgL – nur bei Patienten ohne Einsatzdaten gilt die Regel des Spiels
+            const handoffPlace = /übergabe/i.test(title) || markedHandoff;
+            (handoffPlace ? ['nef', 'rth'] : ['nef', 'rth', 'lna', 'orgl']).forEach(key => {
                 if (patientNeeds[key]) demands.push({ demand: medical[key], label: medical[key].label, need: patientNeeds[key] });
             });
             // Bei mehr als 5 bzw. 10 Patienten verlangt das Spiel LNA bzw. OrgL
-            if (expected >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1, scope: 'all' });
-            if (expected >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1, scope: 'all' });
+            if (!handoffPlace && expected >= 5 && !patientNeeds.lna) demands.push({ demand: medical.lna, label: 'LNA (ab 5 Patienten)', need: 1, scope: 'all' });
+            if (!handoffPlace && expected >= 10 && !patientNeeds.orgl) demands.push({ demand: medical.orgl, label: 'OrgL (ab 10 Patienten)', need: 1, scope: 'all' });
             applyPresent(demands, present, 'driving');
             const infos = expected
                 ? [`ℹ Patienten: ${patientCount} da${waitingFor > 0 ? `, ${waitingFor} unterwegs (${carriers} Zubringer${announced ? `, ${announced} gemeldet` : ''})` : ''}`]
                 : ['ℹ Noch keine Patienten und keine Zubringer erkannt'];
             if (waitingFor > 0) infos.push('ℹ NEF zeigt das Spiel erst, wenn die Patienten da sind');
-            const place = /übergabe/i.test(title) ? 'Übergabeort' : 'Patienten';
+            const place = handoffPlace ? 'Übergabeort' : 'Patienten';
             markDemands(container, aaos, demands, infos, `LSS Helper: ${place} – benötigter Rettungsdienst (Zahl an der AAO = so oft klicken):`);
             return;
         }

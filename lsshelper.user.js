@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.31.0
+// @version      0.32.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -41,6 +41,9 @@
         minChance: 50,
         hotkey: 'y',
         nextTransport: true,
+        transportBest: true,
+        transportPreferOwn: true,
+        transportMaxTax: 20,
         reserveThw: true,
         buildingPersonnel: true,
         buildingExpansions: true,
@@ -131,7 +134,12 @@
         {
             id: 'transport',
             title: '🏥 Sprechwünsche',
-            items: [['nextTransport', 'Nach Krankenhaus-/Zellenwahl weiter', 'Zum nächsten Sprechwunsch, sonst zurück zum Einsatz']],
+            items: [
+                ['transportBest', 'Bestes Ziel vorschlagen', 'Krankenhaus, Zelle oder Übergabestelle (Berg/Wasser) als großer Knopf, Taste wie bei der AAO – auch im Fenster vom LSS Manager'],
+                ['transportPreferOwn', 'Eigene Gebäude vorziehen', 'Verbandsgebäude nur, wenn kein eigenes passt', 'transportBest'],
+                ['transportMaxTax', 'Höchste Verbandsabgabe in %', 'Teurere Verbandsgebäude werden nicht vorgeschlagen', 'transportBest'],
+                ['nextTransport', 'Nach Krankenhaus-/Zellenwahl weiter', 'Zum nächsten Sprechwunsch, sonst zurück zum Einsatz'],
+            ],
         },
         {
             id: 'buildings',
@@ -782,6 +790,9 @@
             #lsshelper-dispatch .lsshelper-dispatch-list { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 8px; }
             #lsshelper-dispatch .lsshelper-dispatch-empty { opacity: 0.6; }
             #lsshelper-dispatch .lsshelper-dispatch-log { max-height: 180px; overflow: auto; margin: 4px 0 0; padding: 6px; font-size: 11px; white-space: pre-wrap; }
+            .lsshelper-transport-best { margin: 6px 0 10px; }
+            .lsshelper-transport-btn { display: block; width: 100%; max-width: 520px; padding: 10px 14px; font-size: 16px; font-weight: 600; text-align: left; white-space: normal; border-radius: 8px; }
+            .lsshelper-transport-btn small { font-weight: 400; opacity: 0.9; }
             #lsshelper-dispatch-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin: -5px -5px 6px; background: #1f2229; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
             #lsshelper-dispatch-bar .lsshelper-dispatch-info { flex: 1; min-width: 160px; font-weight: 700; }
             #lsshelper-dispatch-bar .lsshelper-dispatch-warn { color: #ffb74d; }
@@ -1049,7 +1060,9 @@
                 const handled = Array.from(document.querySelectorAll('iframe')).some(frame => {
                     try {
                         const inner = frame.contentWindow;
-                        return frame.getClientRects().length > 0 && /^\/missions\/\d+/.test(inner.location.pathname) && inner.LSSHelper && inner.LSSHelper.hotkey();
+                        if (!frame.getClientRects().length || !inner.LSSHelper) return false;
+                        if (/^\/vehicles\/\d+/.test(inner.location.pathname)) return !!(inner.LSSHelper.transportChoose && inner.LSSHelper.transportChoose());
+                        return /^\/missions\/\d+/.test(inner.location.pathname) && inner.LSSHelper.hotkey();
                     } catch (err) {
                         return false;
                     }
@@ -3064,6 +3077,199 @@
     }
 
     /* ------------------------------------------------------------------ *
+     * Feature: Ziel-Vorschlag bei Sprechwünschen (Krankenhaus, Zelle, Übergabestelle)
+     * ------------------------------------------------------------------ */
+
+    // Ziele einheitlich: { id, name, list ('own'/'alliance'), distance (km), free (Betten/Zellen, null = egal), department, tax, usable, href }
+    const parseKm = text => {
+        const match = String(text || '').replace(',', '.').match(/(\d+(?:\.\d+)?)\s*(?:km|miles|mi)?/);
+        return match ? parseFloat(match[1]) : 999;
+    };
+    const TRANSPORT_ICONS = { patient: '🏥', prisoner: '🚓', 'patient-intermediate': '🔁', 'prisoner-intermediate': '🔁' };
+
+    // Bestes Ziel: nutzbar, frei, Abgabe im Rahmen; Patienten bevorzugt mit Fachabteilung; dann eigene vor Verband, dann das nächste
+    function pickTransportTarget(kind, targets) {
+        const ok = targets.filter(t => t.usable && (t.list === 'own' || t.tax <= settings.transportMaxTax) && (t.free === null || t.free > 0));
+        const order = (a, b) => (settings.transportPreferOwn && a.list !== b.list ? (a.list === 'own' ? -1 : 1) : 0) || a.distance - b.distance;
+        if (kind === 'patient') {
+            const withDepartment = ok.filter(t => t.department);
+            return (withDepartment.length ? withDepartment : ok).sort(order)[0] || null;
+        }
+        return ok.sort(order)[0] || null;
+    }
+
+    function describeTarget(kind, t) {
+        const parts = [`${String(t.distance).replace('.', ',')} km`];
+        if (t.free !== null) parts.push(`${t.free} ${kind === 'patient' ? 'Betten' : 'Zellen'} frei`);
+        if (kind === 'patient') parts.push(t.department ? 'Fachabteilung' : 'ohne Fachabteilung');
+        parts.push(t.list === 'own' ? 'eigenes' : `Verband ${t.tax} %`);
+        return parts.join(' · ');
+    }
+
+    // Spielseite: Ziele aus Tabellen bzw. Skriptdaten lesen
+    function transportTargetsFromPage() {
+        const request = document.querySelector('[data-transport-request="true"]');
+        if (!request) return null;
+        const raw = request.getAttribute('data-transport-request-type');
+        const kind = raw === 'prisoner-header' ? 'prisoner' : raw;
+        const vehicleId = (location.pathname.match(/^\/vehicles\/(\d+)/) || [])[1];
+        const usable = a => !!a && !a.classList.contains('btn-danger') && !a.classList.contains('disabled') && !a.hasAttribute('disabled');
+        const firstText = cell => ((cell.firstChild ? cell.firstChild.textContent : cell.textContent) || '').trim();
+        const rows = selector => Array.from(document.querySelectorAll(selector)).filter(row => row.children.length > 1);
+        let targets = [];
+        if (kind === 'patient') {
+            targets = ['own', 'alliance'].flatMap(list =>
+                rows(`table#${list}-hospitals tbody tr`).map(row => {
+                    const own = list === 'own';
+                    const c = row.children;
+                    const link = c[own ? 4 : 5] && c[own ? 4 : 5].querySelector('a');
+                    return link && { name: firstText(c[0]), list, distance: parseKm(c[1].textContent), free: parseInt(c[2].textContent) || 0, department: !!(c[own ? 3 : 4] && c[own ? 3 : 4].querySelector('.label-success')), tax: own ? 0 : parseInt(c[3].textContent) || 0, usable: usable(link), href: link.getAttribute('href') };
+                })
+            );
+        } else if (kind === 'patient-intermediate') {
+            targets = ['own', 'alliance'].flatMap(list =>
+                rows(`table#${list}-intermediate-stations tbody tr`).map(row => {
+                    const c = row.children;
+                    const link = row.querySelector('a[href*="/patient/"]') || (c[list === 'own' ? 3 : 2] && c[list === 'own' ? 3 : 2].querySelector('a'));
+                    return link && { name: firstText(c[0]), list, distance: parseKm(c[1].textContent), free: null, department: null, tax: 0, usable: usable(link), href: link.getAttribute('href') };
+                })
+            );
+        } else if (kind === 'prisoner' && vehicleId) {
+            Array.from(document.scripts).forEach(script => {
+                const text = script.textContent || '';
+                [['own', /erb_prisons\.push\((\{.*?\})\)/g], ['alliance', /erb_alliance_prisons\.push\((\{.*?\})\)/g]].forEach(([list, pattern]) => {
+                    let match;
+                    while ((match = pattern.exec(text))) {
+                        try {
+                            const cell = JSON.parse(match[1]);
+                            const free = Number(cell.free_cells) || 0;
+                            targets.push({ name: cell.name, list, distance: parseFloat(cell.distance_in_km) || 999, free, department: null, tax: parseInt((String(cell.caption).match(/(\d+)\s*%\)/) || [])[1]) || 0, usable: free > 0, href: `/vehicles/${vehicleId}/gefangener/${cell.id}` });
+                        } catch (e) {
+                            log('Zelle nicht lesbar', e);
+                        }
+                    }
+                });
+            });
+        } else if (kind === 'prisoner-intermediate' && vehicleId) {
+            let list = 'own';
+            document.querySelectorAll(`.alert-info > a[href^="/vehicles/${vehicleId}/gefangener/"]`).forEach(link => {
+                if (link.previousElementSibling && link.previousElementSibling.matches('h5')) list = 'alliance';
+                const text = link.textContent.trim();
+                const inBrackets = (text.match(/\(([^()]*)\)\s*$/) || [])[1] || '';
+                targets.push({ name: text.replace(/\s*\([^()]*\)\s*$/, ''), list, distance: parseKm(inBrackets), free: null, department: null, tax: parseInt((inBrackets.match(/(\d+)\s*%/) || [])[1]) || 0, usable: usable(link), href: link.getAttribute('href') });
+            });
+        } else return null;
+        return { kind, targets: targets.filter(Boolean), anchor: request };
+    }
+
+    // Großer Knopf mit dem Vorschlag; onChoose führt die Wahl aus
+    function transportBox(kind, best, count, onChoose) {
+        const box = document.createElement('div');
+        box.className = 'lsshelper-transport-best';
+        if (!best) {
+            box.append(Object.assign(document.createElement('div'), { className: 'alert alert-warning', textContent: count ? 'LSS Helper: Kein passendes Ziel frei (Betten/Zellen, Verbandsabgabe).' : 'LSS Helper: Keine Ziele gefunden.' }));
+            return box;
+        }
+        const btn = document.createElement('a');
+        btn.href = '#';
+        btn.className = 'btn btn-success lsshelper-transport-btn';
+        btn.textContent = `${TRANSPORT_ICONS[kind] || '➜'} ${best.name}`;
+        btn.append(document.createElement('br'), Object.assign(document.createElement('small'), { textContent: `${describeTarget(kind, best)}${settings.hotkey ? ` · Taste ${settings.hotkey.toUpperCase()}` : ''}` }));
+        let busy = false;
+        const choose = () => {
+            if (busy) return true;
+            busy = true;
+            btn.classList.add('disabled');
+            onChoose(best);
+            return true;
+        };
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            choose();
+        });
+        box.choose = choose;
+        box.append(btn);
+        return box;
+    }
+
+    // Spielseite (iPad, PC ohne Manager-Redesign)
+    function transportSuggest() {
+        if (!settings.transportBest) return;
+        const found = transportTargetsFromPage();
+        if (!found) return;
+        addStyles();
+        const best = pickTransportTarget(found.kind, found.targets);
+        const box = transportBox(found.kind, best, found.targets.length, target => (location.href = new URL(target.href, location.origin).pathname));
+        found.anchor.before(box);
+        window.LSSHelper.transportChoose = () => (box.choose ? box.choose() : false);
+        document.addEventListener(
+            'keydown',
+            e => {
+                if (!isHotkey(e) || typingIn(e.target) || !box.choose) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                box.choose();
+            },
+            true
+        );
+    }
+
+    // LSS Manager V4 (Redesign) zeigt Sprechwünsche in eigenen Fenstern: dessen Daten lesen und dessen „Anfahren“ nutzen
+    function transportSuggestLssm() {
+        if (inFrame || !settings.transportBest) return;
+        const toTargets = vehicle => {
+            const kind = vehicle.transportRequestType;
+            const map = (items, extra) => (items || []).map(i => Object.assign({ id: i.id, name: i.caption, list: i.list, distance: parseKm(i.distance), free: null, department: null, tax: Number(i.tax) || 0, usable: i.state !== 'danger' }, extra(i)));
+            if (kind === 'patient') return map([].concat(vehicle.hospitals.own, vehicle.hospitals.alliance), i => ({ free: Number(i.freeBeds) || 0, department: !!i.department }));
+            if (kind === 'prisoner') return map([].concat(vehicle.cells.own, vehicle.cells.alliance), i => ({ free: Number(i.freeCells) || 0 }));
+            if (kind === 'patient-intermediate' || kind === 'prisoner-intermediate') return map([].concat(vehicle.buildings.own, vehicle.buildings.alliance), () => ({}));
+            return null;
+        };
+        let active = null;
+        const scan = () => {
+            active = null;
+            document.querySelectorAll('#modals-container .vm--container').forEach(container => {
+                const vm = Array.from(container.querySelectorAll('*'))
+                    .map(el => el.__vue__)
+                    .find(v => v && v.vehicle && v.vehicle.windowType === 'transportRequest' && typeof v.dispatch === 'function');
+                if (!vm) return;
+                const vehicle = vm.vehicle;
+                let box = container.querySelector('.lsshelper-transport-best');
+                if (box && box.dataset.vehicle === String(vehicle.id)) return (active = box);
+                if (box) box.remove();
+                let targets = null;
+                try {
+                    targets = toTargets(vehicle);
+                } catch (e) {
+                    log('Manager-Daten nicht lesbar', e);
+                }
+                if (!targets) return;
+                addStyles();
+                const best = pickTransportTarget(vehicle.transportRequestType, targets);
+                box = transportBox(vehicle.transportRequestType, best, targets.length, target => vm.dispatch(target.id));
+                box.dataset.vehicle = String(vehicle.id);
+                vm.$el.prepend(box);
+                active = box;
+            });
+        };
+        let pending = null;
+        new MutationObserver(() => {
+            if (pending) return;
+            pending = setTimeout(() => ((pending = null), scan()), 300);
+        }).observe(document.body, { childList: true, subtree: true });
+        document.addEventListener(
+            'keydown',
+            e => {
+                if (!isHotkey(e) || typingIn(e.target) || !active || !active.isConnected || !active.choose) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                active.choose();
+            },
+            true
+        );
+    }
+
+    /* ------------------------------------------------------------------ *
      * Feature: Personalbedarf und Ausbauten in der Gebäudeansicht
      * ------------------------------------------------------------------ */
 
@@ -4266,6 +4472,8 @@
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
         { name: 'nextTransport', match: /^\/vehicles\/\d+/, run: nextTransport },
+        { name: 'transportSuggest', match: /^\/vehicles\/\d+\/?$/, run: transportSuggest },
+        { name: 'transportSuggestLssm', match: /^\/$/, run: transportSuggestLssm },
         { name: 'dispatchMain', match: /^\/$/, run: dispatchMain },
         { name: 'dispatchKeyRelay', match: /^\/$/, run: dispatchKeyRelay },
         { name: 'dispatchWindow', match: /^\/(missions|vehicles)\/\d+\/?$/, run: dispatchWindow },

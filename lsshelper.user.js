@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.29.0
+// @version      0.30.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -2814,6 +2814,7 @@
     const DASH_TOOLS = [
         { id: 'check', title: 'Tagescheck', render: (...args) => renderCheckTool(...args) },
         { id: 'stations', title: 'Wachen', render: renderStationsTool },
+        { id: 'trainings', title: 'Lehrgänge', render: (...args) => renderTrainingTool(...args) },
         { id: 'expansion', title: 'Fuhrpark & Ausbau', render: renderExpansionTool },
         { id: 'aao', title: 'AAO', render: renderAaoTool },
         { id: 'settings', title: 'Einstellungen', render: renderSettingsTool },
@@ -4110,6 +4111,101 @@
             dashButton('Neu prüfen', 'lsshelper-btn-quiet', () => {
                 forgetFleet();
                 ctx.open('check');
+            })
+        );
+    }
+
+    // Ausgebildetes Personal, das nicht auf einem passenden Fahrzeug sitzt – je Wache und Lehrgang
+    // kind 'none' = kein passendes Fahrzeug an der Wache, 'free' = passendes Fahrzeug mit freien Plätzen, 'full' = alle passenden Plätze belegt
+    function planTrainingUse(station, vehicles, persons) {
+        const keys = new Set(persons.flatMap(p => Array.from(p.edu)));
+        const result = [];
+        keys.forEach(key => {
+            // Nur Lehrgänge, die irgendein Fahrzeug voraussetzt
+            if (!Object.values(TRAINING).some(t => t && t[key] !== undefined)) return;
+            const trained = persons.filter(p => p.edu.has(key));
+            const matching = vehicles.filter(v => TRAINING[v.vehicle_type] && TRAINING[v.vehicle_type][key] !== undefined);
+            const onMatching = trained.filter(p => matching.some(v => v.caption === p.bound));
+            const idle = trained.length - onMatching.length;
+            if (!idle) return;
+            const name = TRAINING_NAMES[key] || key;
+            if (!matching.length) {
+                // Fahrzeuge, die den Lehrgang brauchen und auf dieser Wache stehen dürfen (Vorschlag zum Kaufen)
+                const buyable = Object.keys(TRAINING)
+                    .filter(type => TRAINING[type][key] !== undefined && dataLabels.vehicles[type])
+                    .filter(type => !dataLabels.possible[type] || !dataLabels.possible[type].length || dataLabels.possible[type].map(String).includes(String(station.building_type)))
+                    .map(type => dataLabels.vehicles[type]);
+                return result.push({ key, name, kind: 'none', idle, trained: trained.length, buyable: Array.from(new Set(buyable)).slice(0, 4) });
+            }
+            const free = matching
+                .map(v => {
+                    const seats = v.max_personnel_override === null || v.max_personnel_override === undefined ? (STAFF[v.vehicle_type] || [0, 0])[1] : v.max_personnel_override;
+                    return { vehicle: v, free: Math.max(0, seats - persons.filter(p => p.bound === v.caption).length) };
+                })
+                .filter(f => f.free > 0);
+            result.push({ key, name, kind: free.length ? 'free' : 'full', idle, trained: trained.length, free, matching });
+        });
+        return result.sort((a, b) => ['free', 'none', 'full'].indexOf(a.kind) - ['free', 'none', 'full'].indexOf(b.kind) || b.idle - a.idle);
+    }
+
+    async function renderTrainingTool(ctx) {
+        ctx.status('Lese Gebäude und Fahrzeuge …');
+        const { buildings, vehicles } = await loadBasics();
+        const stations = buildings
+            .filter(b => b.personal_count > 0 && (!ctx.onlyBuildingId || String(b.id) === String(ctx.onlyBuildingId)))
+            .sort((a, b) => a.caption.localeCompare(b.caption, 'de'));
+        const intro = dashEl('div', 'lsshelper-dash-empty', 'Zeigt je Wache Personal mit Lehrgang, das nicht auf einem Fahrzeug sitzt, das diesen Lehrgang braucht. Liest dafür die Personallisten (bei vielen Wachen dauert das etwas).');
+        ctx.body.append(intro);
+        const row = (text, href, detail) => {
+            const line = dashEl('div', 'lsshelper-check-row');
+            const link = dashEl(href ? 'a' : 'span', href ? 'lsshelper-dash-link' : '', text);
+            if (href) {
+                link.href = href;
+                link.addEventListener('click', e => {
+                    if (typeof window.lightboxOpen !== 'function') return;
+                    e.preventDefault();
+                    ctx.close();
+                    window.lightboxOpen(href);
+                });
+            }
+            line.append(link);
+            if (detail) line.append(dashEl('small', '', detail));
+            return line;
+        };
+        const counts = { free: 0, none: 0, full: 0 };
+        const cards = [];
+        for (const [index, building] of stations.entries()) {
+            ctx.status(`Lese Personal … ${index + 1}/${stations.length} (${building.caption})`);
+            const result = await cachedPersonnel(building.id).catch(() => ({ persons: [], cached: true }));
+            if (!result.cached) await sleep(100);
+            const own = vehicles.filter(v => v.building_id === building.id);
+            const items = planTrainingUse(building, own, result.persons);
+            if (items.length) cards.push({ building, items });
+        }
+        if (!cards.length) {
+            ctx.body.append(dashEl('div', 'lsshelper-dash-empty', '✓ Alles ausgebildete Personal sitzt auf passenden Fahrzeugen.'));
+            ctx.status(`${stations.length} Wachen geprüft.`);
+            return;
+        }
+        cards.forEach(({ building, items }) => {
+            const card = dashCard(ctx.body, '', items.reduce((sum, i) => sum + i.idle, 0));
+            card.head.querySelector('.lsshelper-dash-card-title').replaceWith(stationHeading(ctx, building));
+            items.forEach(item => {
+                counts[item.kind] += item.idle;
+                const lead = `${item.name}: ${item.idle} von ${item.trained} ohne passendes Fahrzeug`;
+                if (item.kind === 'none') card.append(row(lead, `/buildings/${building.id}`, `kein Fahrzeug dafür an der Wache${item.buyable.length ? ` – z. B. ${item.buyable.join(', ')}` : ''}`));
+                else if (item.kind === 'free') {
+                    card.append(row(lead, null, 'passendes Fahrzeug hat freie Plätze – antippen zum Zuweisen:'));
+                    item.free.forEach(f => card.append(row(`→ ${f.vehicle.caption}`, `/vehicles/${f.vehicle.id}/zuweisung`, `${f.free} ${f.free === 1 ? 'Platz' : 'Plätze'} frei`)));
+                }
+                else card.append(row(lead, null, `alle Plätze auf ${item.matching.map(v => v.caption).join(', ')} belegt – weiteres Fahrzeug nötig`));
+            });
+        });
+        ctx.status(`${cards.length} Wachen: ${counts.free} könnten sofort zugewiesen werden, ${counts.none} ohne passendes Fahrzeug, ${counts.full} ohne freien Platz.`);
+        ctx.body.append(
+            dashButton('Neu lesen', 'lsshelper-btn-quiet', () => {
+                forgetFleet();
+                ctx.open('trainings');
             })
         );
     }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.28.6
+// @version      0.28.7
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -615,12 +615,14 @@
     // Krankentransport? (Name des Einsatzes) – dort fährt nur der KTW
     const isPatientTransport = () => /krankentransport/i.test(getMissionTitle() || '');
 
+    const ONCE_PER_MISSION_KEYS = ['lna', 'orgl'];
     function parsePatientNeeds() {
         const needs = {};
         document.querySelectorAll('.mission_patient .alert-danger').forEach(alert => {
             const text = alert.textContent;
             [['nef', /\bNEF\b/], ['rth', /\bRTH\b/], ['lna', /\bLNA\b/], ['orgl', /\bOrgL\b/]].forEach(([key, re]) => {
-                if (re.test(text)) needs[key] = (needs[key] || 0) + 1;
+                // LNA und OrgL fragt jeder Patient an, einer reicht aber für den ganzen Einsatz
+                if (re.test(text)) needs[key] = ONCE_PER_MISSION_KEYS.includes(key) ? 1 : (needs[key] || 0) + 1;
             });
             // Transport: „RTW oder KTW“ = beides passt, nur „KTW“ = Krankentransport, nur „RTW“ = Rettungswagen
             const rtw = /\bRTW\b/.test(text);
@@ -1090,9 +1092,21 @@
         };
     }
 
+    // KdoW-LNA und KdoW-OrgL braucht ein Einsatz nur einmal, auch wenn mehrere Patienten (oder Patienten und Fehlmeldung) danach fragen
+    const ONCE_PER_MISSION_TYPES = [55, 56];
+    function oncePerMission(demands) {
+        ONCE_PER_MISSION_TYPES.forEach(type => {
+            const matching = demands.filter(d => d.demand && d.demand.types.length && d.demand.types.every(t => ONCE_PER_MISSION_TYPES.includes(t)) && d.demand.types.includes(type));
+            if (!matching.length) return;
+            matching[0].need = Math.min(matching[0].need, 1);
+            matching.slice(1).forEach(d => demands.splice(demands.indexOf(d), 1));
+        });
+    }
+
     // Zieht bereits alarmierte und angehakte Fahrzeuge vom Bedarf ab. scope 'all' = Anfahrt + vor Ort, 'driving' = nur Anfahrt
     // (was das Spiel als fehlend meldet, berücksichtigt die Fahrzeuge vor Ort schon selbst).
     function applyPresent(demands, present, defaultScope) {
+        oncePerMission(demands);
         if (!settings.subtractPresent) return;
         demands.forEach(d => {
             if (!d.demand) return;

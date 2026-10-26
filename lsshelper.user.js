@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.33.0
+// @version      0.33.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1713,8 +1713,10 @@
     // reqForms: Einzahl und Mehrzahl jeder Anforderung (normalisiert) -> Anforderungs-Schlüssel, für die Namen in „fehlende Fahrzeuge“
     const dataLabels = { req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
     // Fahrzeugtyp -> Lehrgänge, die die ganze Besatzung braucht (sonst nur einzelne Plätze, z. B. 1 Notarzt im NEF)
-    // Rückfall, bis die Fahrzeugdaten geladen sind: FuStW (AP) – beide Plätze brauchen den Autobahnpolizei-Lehrgang
-    const TRAINING_ALL = { 184: ['highway_police'] };
+    // Rückfall, bis die Fahrzeugdaten geladen sind (Lehrgänge -> Fahrzeugtypen), z. B. FuStW (AP): beide Plätze mit Autobahnpolizei-Lehrgang
+    const TRAINING_ALL = {};
+    // prettier-ignore
+    Object.entries({'gw_messtechnik':[12],'gw_gefahrgut':[27,77],'notarzt':[29,31],'gw_hoehenrettung':[33],'elw2':[34,78],'police_einsatzleiter':[35],'thw_zugtrupp':[40],'thw_raumen':[42,45],'wechsellader':[46],'police_fukw':[51],'dekon_p':[54],'lna':[55],'orgl':[56],'fwk':[57],'seg_elw':[59],'seg_gw_san':[60],'polizeihubschrauber':[61],'gw_taucher':[63,69],'gw_wasserrettung':[64,66,67,68,70,71],'police_wasserwerfer':[72],'arff':[75],'rettungstreppe':[76],'police_sek':[79,80],'police_mek':[81,82],'werkfeuerwehr':[83,84,85,86],'seg_rescue_dogs':[91,153],'thw_rescue_dogs':[92],'k9':[94],'police_motorcycle':[95],'police_firefighting':[96],'criminal_investigation':[98],'water_damage_pump':[100],'heavy_rescue':[109],'thw_drone':[125],'seg_drone':[127],'fire_drone':[128],'fire_drone,elw2':[129],'care_service':[131],'fire_care_service':[140],'thw_command':[144,145,147,148],'mountain_command':[151],'mountain_height_rescue':[158],'coastal_rescue':[159],'railway_fire':[162,163],'police_speaker_operator':[165],'disaster_response_technology':[171],'thw_care_service':[177],'thw_bridge_construction':[181],'thw_bridge_construction_crane':[182],'highway_police':[184],'wildfire':[187,188,189,190]}).forEach(([keys, types]) => types.forEach(type => (TRAINING_ALL[type] = keys.split(','))));
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,

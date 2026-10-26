@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.33.3
+// @version      0.33.4
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1888,19 +1888,16 @@
                 progress = false;
                 vehicles.forEach(v => {
                     if (!v.staffed || v.next >= v.max) return;
-                    // Fahrzeuge nur für Ausgebildete holen sich für freie Plätze niemanden von anderen Fahrzeugen
-                    const extra = pick(1, v.all, v, [], v.all.length ? 1 : maxRank);
+                    // Sitzlimit wie bisher aus dem Personal der ganzen Wache; Lehrgangsfahrzeuge nehmen dabei zuerst freie Ausgebildete
+                    // (die werden auch zugewiesen), von anderen Fahrzeugen wird dafür niemand abgezogen
+                    const extra = (v.all.length && pick(1, v.all, v, [], 1)) || pick(1, [], v, [], maxRank);
                     if (!extra) return;
                     extra[0].used = true;
                     v.next++;
-                    if (v.all.length) v.trained.push(extra[0]);
+                    if (v.all.length && v.all.every(key => extra[0].edu.has(key))) v.trained.push(extra[0]);
                     progress = true;
                 });
             }
-        });
-        // Dürfen nur Ausgebildete drauf, bringt ein kleineres Sitzlimit kein Personal frei – dann das bisherige lassen
-        vehicles.forEach(v => {
-            if (v.staffed && v.all.length && v.next < v.current) v.next = v.current;
         });
         return persons.filter(p => !p.used).length;
     }

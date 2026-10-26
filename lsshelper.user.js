@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.32.2
+// @version      0.33.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1713,7 +1713,8 @@
     // reqForms: Einzahl und Mehrzahl jeder Anforderung (normalisiert) -> Anforderungs-Schlüssel, für die Namen in „fehlende Fahrzeuge“
     const dataLabels = { req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
     // Fahrzeugtyp -> Lehrgänge, die die ganze Besatzung braucht (sonst nur einzelne Plätze, z. B. 1 Notarzt im NEF)
-    const TRAINING_ALL = {};
+    // Rückfall, bis die Fahrzeugdaten geladen sind: FuStW (AP) – beide Plätze brauchen den Autobahnpolizei-Lehrgang
+    const TRAINING_ALL = { 184: ['highway_police'] };
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,
@@ -1844,8 +1845,11 @@
             return pool.length >= n ? pool.slice(0, n) : null;
         };
         vehicles.forEach(v => {
-            v.all = [];
-            v.partial = Object.entries(TRAINING[v.type] || {}).map(([key, n]) => [key, n || 1]);
+            // Lehrgänge, die die ganze Besatzung braucht (z. B. FuStW (AP): jeder Platz), und solche für einzelne Plätze (z. B. 1 Notarzt)
+            v.all = (TRAINING_ALL[v.type] || []).filter(key => (TRAINING[v.type] || {})[key] !== undefined);
+            v.partial = Object.entries(TRAINING[v.type] || {})
+                .filter(([key]) => !v.all.includes(key))
+                .map(([key, n]) => [key, n || 1]);
             v.next = v.min;
             v.staffed = false;
             v.trained = [];
@@ -1981,6 +1985,7 @@
         leitstelle: change => submitEditForm(`/buildings/${change.building.id}/edit`, f => f.querySelector('[name="building[leitstelle_building_id]"]'), { 'building[leitstelle_building_id]': change.target.id }),
         // Zuweisen und Lösen ist im Spiel derselbe Umschalter – deshalb vorher den aktuellen Stand prüfen
         assign: change => toggleBinding(change, true),
+        unassign: change => toggleBinding(change, false),
     };
 
     async function toggleBinding(change, shouldBeBound) {
@@ -2076,13 +2081,18 @@
                 // Gleichnamige Fahrzeuge lassen sich in der Personalliste nicht unterscheiden
                 if (!needs || !v.staffed || duplicate(v.caption)) return;
                 const bound = persons.filter(p => p.bound === v.caption);
+                // Braucht die ganze Besatzung den Lehrgang (z. B. FuStW (AP)), müssen Gebundene ohne Lehrgang zuerst runter
+                if (v.all.length)
+                    bound.filter(p => p.id && !v.all.every(key => p.edu.has(key))).forEach(person => {
+                        changes.push({ kind: 'unassign', station, vehicle: v, person, text: `${person.name} von ${v.caption} lösen (ohne Lehrgang)` });
+                    });
                 v.trained.filter(p => !bound.includes(p) && p.id).forEach(person => {
                     changes.push({ kind: 'assign', station, vehicle: v, person, text: `${person.name} → ${v.caption}${person.bound ? ` (bisher ${person.bound})` : ''}` });
                 });
             });
             // Lehrgangsbedarf: so viele Ausgebildete brauchen die Fahrzeuge der Wache zusammen, so viele gibt es
             const demand = {};
-            crewed.forEach(v => v.partial.forEach(([key, n]) => {
+            crewed.forEach(v => v.partial.concat(v.all.map(key => [key, Math.max(1, v.min)])).forEach(([key, n]) => {
                 demand[key] = demand[key] || { need: 0, vehicles: [] };
                 demand[key].need += n;
                 demand[key].vehicles.push(v.caption);
@@ -2135,7 +2145,7 @@
         { title: 'Leitstelle', kinds: ['leitstelle'], button: 'Leitstelle zuweisen' },
         { title: 'Namen', kinds: ['name', 'building'], button: 'Namen übernehmen' },
         { title: 'Sitzlimits', kinds: ['limit'], button: 'Sitzlimits übernehmen' },
-        { title: 'Lehrgangspersonal', kinds: ['assign'], button: 'Lehrgangspersonal zuweisen' },
+        { title: 'Lehrgangspersonal', kinds: ['unassign', 'assign'], button: 'Lehrgangspersonal zuweisen' },
     ];
 
     const THEME_KEY = 'lsshelper_dash_theme';

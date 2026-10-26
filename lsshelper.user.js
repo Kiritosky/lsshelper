@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.33.1
+// @version      0.33.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1707,6 +1707,8 @@
         TRAINING[type] = { wildfire: 1 };
     });
     [191, 192].forEach(type => (STAFF[type] = [0, 0]));
+    // Dekon-P: Lehrgang nötig, die Daten nennen aber keine Zahl
+    TRAINING[53] = TRAINING[53] || { dekon_p: 1 };
 
     // Bezeichnungen aus den Spieldaten: Anforderungen und Voraussetzungen (Schlüssel -> deutscher Name)
     // ... sowie Fahrzeugnamen, wo ein Fahrzeug gekauft werden kann, und offizielle Gebäudenamen
@@ -1716,7 +1718,7 @@
     // Rückfall, bis die Fahrzeugdaten geladen sind (Lehrgänge -> Fahrzeugtypen), z. B. FuStW (AP): beide Plätze mit Autobahnpolizei-Lehrgang
     const TRAINING_ALL = {};
     // prettier-ignore
-    Object.entries({'gw_messtechnik':[12],'gw_gefahrgut':[27,77],'notarzt':[29,31],'gw_hoehenrettung':[33],'elw2':[34,78],'police_einsatzleiter':[35],'thw_zugtrupp':[40],'thw_raumen':[42,45],'wechsellader':[46],'police_fukw':[51],'dekon_p':[54],'lna':[55],'orgl':[56],'fwk':[57],'seg_elw':[59],'seg_gw_san':[60],'polizeihubschrauber':[61],'gw_taucher':[63,69],'gw_wasserrettung':[64,66,67,68,70,71],'police_wasserwerfer':[72],'arff':[75],'rettungstreppe':[76],'police_sek':[79,80],'police_mek':[81,82],'werkfeuerwehr':[83,84,85,86],'seg_rescue_dogs':[91,153],'thw_rescue_dogs':[92],'k9':[94],'police_motorcycle':[95],'police_firefighting':[96],'criminal_investigation':[98],'water_damage_pump':[100],'heavy_rescue':[109],'thw_drone':[125],'seg_drone':[127],'fire_drone':[128],'fire_drone,elw2':[129],'care_service':[131],'fire_care_service':[140],'thw_command':[144,145,147,148],'mountain_command':[151],'mountain_height_rescue':[158],'coastal_rescue':[159],'railway_fire':[162,163],'police_speaker_operator':[165],'disaster_response_technology':[171],'thw_care_service':[177],'thw_bridge_construction':[181],'thw_bridge_construction_crane':[182],'highway_police':[184],'wildfire':[187,188,189,190]}).forEach(([keys, types]) => types.forEach(type => (TRAINING_ALL[type] = keys.split(','))));
+    Object.entries({'gw_messtechnik':[12],'gw_gefahrgut':[27,77],'notarzt':[29,31],'gw_hoehenrettung':[33],'elw2':[34,78],'police_einsatzleiter':[35],'thw_zugtrupp':[40],'thw_raumen':[42,45],'wechsellader':[46],'police_fukw':[51],'dekon_p':[53,54],'lna':[55],'orgl':[56],'fwk':[57],'seg_elw':[59],'seg_gw_san':[60],'polizeihubschrauber':[61],'gw_taucher':[63,69],'gw_wasserrettung':[64,66,67,68,70,71],'police_wasserwerfer':[72],'arff':[75],'rettungstreppe':[76],'police_sek':[79,80],'police_mek':[81,82],'werkfeuerwehr':[83,84,85,86],'seg_rescue_dogs':[91,153],'thw_rescue_dogs':[92],'k9':[94],'police_motorcycle':[95],'police_firefighting':[96],'criminal_investigation':[98],'water_damage_pump':[100],'heavy_rescue':[109],'thw_drone':[125],'seg_drone':[127],'fire_drone':[128],'fire_drone,elw2':[129],'care_service':[131],'fire_care_service':[140],'thw_command':[144,145,147,148],'mountain_command':[151],'mountain_height_rescue':[158],'coastal_rescue':[159],'railway_fire':[162,163],'police_speaker_operator':[165],'disaster_response_technology':[171],'thw_care_service':[177],'thw_bridge_construction':[181],'thw_bridge_construction_crane':[182],'highway_police':[184],'police_horse':[135,136],'wildfire':[187,188,189,190]}).forEach(([keys, types]) => types.forEach(type => (TRAINING_ALL[type] = keys.split(','))));
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,
@@ -1741,9 +1743,9 @@
         } catch (e) {
             /* neu laden */
         }
-        if (cached && Date.now() - cached.t < CACHE_TTL && cached.trainingAll) return;
+        if (cached && Date.now() - cached.t < CACHE_TTL && cached.v === 2) return;
         const vehicles = await (await fetch('https://api.lss-manager.de/de_DE/vehicles')).json();
-        const data = { t: Date.now(), staff: {}, training: {}, trainingAll: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
+        const data = { t: Date.now(), v: 2, staff: {}, training: {}, trainingAll: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
         // Die Zusatzquellen dürfen fehlen – dann bleibt es bei den eingebauten Bezeichnungen
         await sleep(150);
         const labels = await fetch('https://api.lss-manager.de/de_DE/einsaetze').then(r => r.json()).catch(() => ({}));
@@ -1768,9 +1770,11 @@
             data.staff[type] = [vehicle.staff.min || 0, vehicle.staff.max || 0];
             const required = {};
             Object.values(vehicle.staff.training || {}).forEach(school => Object.entries(school).forEach(([key, rule]) => {
-                const amount = rule.all ? 1 : rule.min || 0;
+                // „min: 0“ heißt: Lehrgang nötig, aber ohne feste Zahl (z. B. Dekon-P) – wie „alle brauchen ihn“ behandeln
+                const everyone = rule.all || rule.min === 0;
+                const amount = everyone ? 1 : rule.min || 0;
                 if (amount > 0) required[key] = amount;
-                if (rule.all) (data.trainingAll[type] = data.trainingAll[type] || []).push(key);
+                if (everyone) (data.trainingAll[type] = data.trainingAll[type] || []).push(key);
             }));
             if (Object.keys(required).length) data.training[type] = required;
         });
@@ -1884,7 +1888,8 @@
                 progress = false;
                 vehicles.forEach(v => {
                     if (!v.staffed || v.next >= v.max) return;
-                    const extra = pick(1, v.all, v, [], maxRank);
+                    // Fahrzeuge nur für Ausgebildete holen sich für freie Plätze niemanden von anderen Fahrzeugen
+                    const extra = pick(1, v.all, v, [], v.all.length ? 1 : maxRank);
                     if (!extra) return;
                     extra[0].used = true;
                     v.next++;
@@ -1892,6 +1897,10 @@
                     progress = true;
                 });
             }
+        });
+        // Dürfen nur Ausgebildete drauf, bringt ein kleineres Sitzlimit kein Personal frei – dann das bisherige lassen
+        vehicles.forEach(v => {
+            if (v.staffed && v.all.length && v.next < v.current) v.next = v.current;
         });
         return persons.filter(p => !p.used).length;
     }

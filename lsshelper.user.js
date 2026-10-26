@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.33.4
+// @version      0.34.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1708,7 +1708,7 @@
     });
     [191, 192].forEach(type => (STAFF[type] = [0, 0]));
     // Dekon-P: Lehrgang nötig, die Daten nennen aber keine Zahl
-    TRAINING[53] = TRAINING[53] || { dekon_p: 1 };
+    TRAINING[53] = TRAINING[53] || { dekon_p: 6 };
 
     // Bezeichnungen aus den Spieldaten: Anforderungen und Voraussetzungen (Schlüssel -> deutscher Name)
     // ... sowie Fahrzeugnamen, wo ein Fahrzeug gekauft werden kann, und offizielle Gebäudenamen
@@ -1717,8 +1717,10 @@
     // Fahrzeugtyp -> Lehrgänge, die die ganze Besatzung braucht (sonst nur einzelne Plätze, z. B. 1 Notarzt im NEF)
     // Rückfall, bis die Fahrzeugdaten geladen sind (Lehrgänge -> Fahrzeugtypen), z. B. FuStW (AP): beide Plätze mit Autobahnpolizei-Lehrgang
     const TRAINING_ALL = {};
+    // Fahrzeugtyp -> Lehrgänge, die zum Ausrücken nicht nötig, aber erwünscht sind (Dekon-P: 6 Ausgebildete am Einsatzort)
+    const TRAINING_PREFER = { 53: ['dekon_p'], 135: ['police_horse'], 136: ['police_horse'] };
     // prettier-ignore
-    Object.entries({'gw_messtechnik':[12],'gw_gefahrgut':[27,77],'notarzt':[29,31],'gw_hoehenrettung':[33],'elw2':[34,78],'police_einsatzleiter':[35],'thw_zugtrupp':[40],'thw_raumen':[42,45],'wechsellader':[46],'police_fukw':[51],'dekon_p':[53,54],'lna':[55],'orgl':[56],'fwk':[57],'seg_elw':[59],'seg_gw_san':[60],'polizeihubschrauber':[61],'gw_taucher':[63,69],'gw_wasserrettung':[64,66,67,68,70,71],'police_wasserwerfer':[72],'arff':[75],'rettungstreppe':[76],'police_sek':[79,80],'police_mek':[81,82],'werkfeuerwehr':[83,84,85,86],'seg_rescue_dogs':[91,153],'thw_rescue_dogs':[92],'k9':[94],'police_motorcycle':[95],'police_firefighting':[96],'criminal_investigation':[98],'water_damage_pump':[100],'heavy_rescue':[109],'thw_drone':[125],'seg_drone':[127],'fire_drone':[128],'fire_drone,elw2':[129],'care_service':[131],'fire_care_service':[140],'thw_command':[144,145,147,148],'mountain_command':[151],'mountain_height_rescue':[158],'coastal_rescue':[159],'railway_fire':[162,163],'police_speaker_operator':[165],'disaster_response_technology':[171],'thw_care_service':[177],'thw_bridge_construction':[181],'thw_bridge_construction_crane':[182],'highway_police':[184],'police_horse':[135,136],'wildfire':[187,188,189,190]}).forEach(([keys, types]) => types.forEach(type => (TRAINING_ALL[type] = keys.split(','))));
+    Object.entries({'gw_messtechnik':[12],'gw_gefahrgut':[27,77],'notarzt':[29,31],'gw_hoehenrettung':[33],'elw2':[34,78],'police_einsatzleiter':[35],'thw_zugtrupp':[40],'thw_raumen':[42,45],'wechsellader':[46],'police_fukw':[51],'dekon_p':[54],'lna':[55],'orgl':[56],'fwk':[57],'seg_elw':[59],'seg_gw_san':[60],'polizeihubschrauber':[61],'gw_taucher':[63,69],'gw_wasserrettung':[64,66,67,68,70,71],'police_wasserwerfer':[72],'arff':[75],'rettungstreppe':[76],'police_sek':[79,80],'police_mek':[81,82],'werkfeuerwehr':[83,84,85,86],'seg_rescue_dogs':[91,153],'thw_rescue_dogs':[92],'k9':[94],'police_motorcycle':[95],'police_firefighting':[96],'criminal_investigation':[98],'water_damage_pump':[100],'heavy_rescue':[109],'thw_drone':[125],'seg_drone':[127],'fire_drone':[128],'fire_drone,elw2':[129],'care_service':[131],'fire_care_service':[140],'thw_command':[144,145,147,148],'mountain_command':[151],'mountain_height_rescue':[158],'coastal_rescue':[159],'railway_fire':[162,163],'police_speaker_operator':[165],'disaster_response_technology':[171],'thw_care_service':[177],'thw_bridge_construction':[181],'thw_bridge_construction_crane':[182],'highway_police':[184],'wildfire':[187,188,189,190]}).forEach(([keys, types]) => types.forEach(type => (TRAINING_ALL[type] = keys.split(','))));
 
     // Stammdaten aktualisieren sich täglich, damit Neues nach einem Spiel-Update ohne Skript-Update bekannt wird:
     // Fahrzeuge (Besatzung, Lehrgänge) und Bezeichnungen aus der offenen Datenbank des LSS-Managers,
@@ -1728,7 +1730,12 @@
     function applyVehicleData(data) {
         if (!data || !data.staff) return;
         ['req', 'reqForms', 'pre', 'vehicles', 'possible', 'buildings'].forEach(key => Object.assign(dataLabels[key], data[key] || {}));
-        Object.assign(TRAINING_ALL, data.trainingAll || {});
+        if (data.v === 3) {
+            Object.keys(TRAINING_ALL).forEach(type => delete TRAINING_ALL[type]);
+            Object.keys(TRAINING_PREFER).forEach(type => delete TRAINING_PREFER[type]);
+            Object.assign(TRAINING_ALL, data.trainingAll || {});
+            Object.assign(TRAINING_PREFER, data.trainingPrefer || {});
+        }
         Object.entries(data.staff).forEach(([type, staff]) => {
             STAFF[type] = staff;
             if (data.training[type]) TRAINING[type] = data.training[type];
@@ -1743,9 +1750,9 @@
         } catch (e) {
             /* neu laden */
         }
-        if (cached && Date.now() - cached.t < CACHE_TTL && cached.v === 2) return;
+        if (cached && Date.now() - cached.t < CACHE_TTL && cached.v === 3) return;
         const vehicles = await (await fetch('https://api.lss-manager.de/de_DE/vehicles')).json();
-        const data = { t: Date.now(), v: 2, staff: {}, training: {}, trainingAll: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
+        const data = { t: Date.now(), v: 3, staff: {}, training: {}, trainingAll: {}, trainingPrefer: {}, names: {}, req: {}, reqForms: {}, pre: {}, vehicles: {}, possible: {}, buildings: {} };
         // Die Zusatzquellen dürfen fehlen – dann bleibt es bei den eingebauten Bezeichnungen
         await sleep(150);
         const labels = await fetch('https://api.lss-manager.de/de_DE/einsaetze').then(r => r.json()).catch(() => ({}));
@@ -1770,11 +1777,15 @@
             data.staff[type] = [vehicle.staff.min || 0, vehicle.staff.max || 0];
             const required = {};
             Object.values(vehicle.staff.training || {}).forEach(school => Object.entries(school).forEach(([key, rule]) => {
-                // „min: 0“ heißt: Lehrgang nötig, aber ohne feste Zahl (z. B. Dekon-P) – wie „alle brauchen ihn“ behandeln
-                const everyone = rule.all || rule.min === 0;
-                const amount = everyone ? 1 : rule.min || 0;
-                if (amount > 0) required[key] = amount;
-                if (everyone) (data.trainingAll[type] = data.trainingAll[type] || []).push(key);
+                // „alle“: die Mindestbesatzung muss ausgebildet sein (so rechnet auch der LSS Manager)
+                if (rule.all) {
+                    required[key] = 1;
+                    (data.trainingAll[type] = data.trainingAll[type] || []).push(key);
+                } else if (rule.min === 0) {
+                    // „min: 0“: zum Ausrücken nicht nötig, aber erwünscht – z. B. Dekon-P: 6 Ausgebildete am Einsatzort
+                    required[key] = vehicle.staff.trainingAtScene || vehicle.staff.max || 1;
+                    (data.trainingPrefer[type] = data.trainingPrefer[type] || []).push(key);
+                } else if (rule.min > 0) required[key] = rule.min;
             }));
             if (Object.keys(required).length) data.training[type] = required;
         });
@@ -1851,10 +1862,11 @@
             return pool.length >= n ? pool.slice(0, n) : null;
         };
         vehicles.forEach(v => {
-            // Lehrgänge, die die ganze Besatzung braucht (z. B. FuStW (AP): jeder Platz), und solche für einzelne Plätze (z. B. 1 Notarzt)
+            // Lehrgänge, die die Mindestbesatzung braucht (z. B. FuStW (AP): beide), erwünschte (Dekon-P) und einzelne Pflichtplätze (z. B. 1 Notarzt im NAW)
             v.all = (TRAINING_ALL[v.type] || []).filter(key => (TRAINING[v.type] || {})[key] !== undefined);
+            v.prefer = (TRAINING_PREFER[v.type] || []).filter(key => !v.all.includes(key));
             v.partial = Object.entries(TRAINING[v.type] || {})
-                .filter(([key]) => !v.all.includes(key))
+                .filter(([key]) => !v.all.includes(key) && !v.prefer.includes(key))
                 .map(([key, n]) => [key, n || 1]);
             v.next = v.min;
             v.staffed = false;
@@ -1874,11 +1886,18 @@
                 };
                 if (!v.partial.every(([key, n]) => add(n, v.all.concat(key)))) return;
                 const specialists = crew.slice();
+                // Erwünschte Lehrgänge: für die Mindestbesatzung zuerst freie Ausgebildete nehmen
+                while (v.prefer.length && crew.length < v.min) {
+                    const found = pick(1, v.all.concat(v.prefer), v, crew, 1);
+                    if (!found) break;
+                    crew.push(found[0]);
+                }
                 if (!add(Math.max(0, v.min - crew.length), v.all) || crew.length > v.max) return;
                 crew.forEach(p => (p.used = true));
                 v.staffed = true;
                 v.next = Math.max(v.min, crew.length);
-                v.trained = v.all.length ? crew.slice() : specialists;
+                const wanted = v.all.concat(v.prefer);
+                v.trained = wanted.length ? crew.filter(p => specialists.includes(p) || wanted.every(key => p.edu.has(key))) : specialists;
             });
         // Rest reihum verteilen: erst nur eigene und freie Leute, damit bestehende Bindungen bleiben,
         // danach dürfen auch an andere Fahrzeuge Gebundene umziehen
@@ -1890,11 +1909,12 @@
                     if (!v.staffed || v.next >= v.max) return;
                     // Sitzlimit wie bisher aus dem Personal der ganzen Wache; Lehrgangsfahrzeuge nehmen dabei zuerst freie Ausgebildete
                     // (die werden auch zugewiesen), von anderen Fahrzeugen wird dafür niemand abgezogen
-                    const extra = (v.all.length && pick(1, v.all, v, [], 1)) || pick(1, [], v, [], maxRank);
+                    const wanted = v.all.concat(v.prefer);
+                    const extra = (wanted.length && pick(1, wanted, v, [], 1)) || pick(1, [], v, [], maxRank);
                     if (!extra) return;
                     extra[0].used = true;
                     v.next++;
-                    if (v.all.length && v.all.every(key => extra[0].edu.has(key))) v.trained.push(extra[0]);
+                    if (wanted.length && wanted.every(key => extra[0].edu.has(key))) v.trained.push(extra[0]);
                     progress = true;
                 });
             }
@@ -2082,25 +2102,31 @@
             station.left = planCrew(crewed, persons);
             const duplicate = caption => station.vehicles.filter(v => v.caption === caption).length > 1;
             crewed.forEach(v => {
-                const needs = v.all.length || v.partial.length;
+                const needs = v.all.length || v.partial.length || v.prefer.length;
                 if (v.staffed && v.next !== v.current) {
                     changes.push({ kind: 'limit', station, vehicle: v, text: `${v.caption}: Sitzlimit ${v.current} → ${v.next}` });
                 }
                 // Gleichnamige Fahrzeuge lassen sich in der Personalliste nicht unterscheiden
                 if (!needs || !v.staffed || duplicate(v.caption)) return;
                 const bound = persons.filter(p => p.bound === v.caption);
-                // Braucht die ganze Besatzung den Lehrgang (z. B. FuStW (AP)), müssen Gebundene ohne Lehrgang zuerst runter
-                if (v.all.length)
-                    bound.filter(p => p.id && !v.all.every(key => p.edu.has(key))).forEach(person => {
-                        changes.push({ kind: 'unassign', station, vehicle: v, person, text: `${person.name} von ${v.caption} lösen (ohne Lehrgang)` });
-                    });
+                // Muss die Mindestbesatzung ausgebildet sein (z. B. FuStW (AP)) und ist dafür kein Platz frei, gehen Gebundene ohne Lehrgang runter –
+                // nur so viele wie nötig, auf weiteren Plätzen dürfen sie bleiben
+                if (v.all.length) {
+                    const trainedOn = bound.filter(p => v.all.every(key => p.edu.has(key))).length;
+                    const missing = Math.max(0, v.min - trainedOn);
+                    const room = Math.max(0, v.next - bound.length);
+                    bound
+                        .filter(p => p.id && !v.all.every(key => p.edu.has(key)))
+                        .slice(0, Math.max(0, missing - room))
+                        .forEach(person => changes.push({ kind: 'unassign', station, vehicle: v, person, text: `${person.name} von ${v.caption} lösen (Platz für Ausgebildete)` }));
+                }
                 v.trained.filter(p => !bound.includes(p) && p.id).forEach(person => {
                     changes.push({ kind: 'assign', station, vehicle: v, person, text: `${person.name} → ${v.caption}${person.bound ? ` (bisher ${person.bound})` : ''}` });
                 });
             });
             // Lehrgangsbedarf: so viele Ausgebildete brauchen die Fahrzeuge der Wache zusammen, so viele gibt es
             const demand = {};
-            crewed.forEach(v => v.partial.concat(v.all.map(key => [key, Math.max(1, v.min)])).forEach(([key, n]) => {
+            crewed.forEach(v => v.partial.concat(v.all.map(key => [key, Math.max(1, v.min)]), v.prefer.map(key => [key, Math.min(v.max, (TRAINING[v.type] || {})[key] || 1)])).forEach(([key, n]) => {
                 demand[key] = demand[key] || { need: 0, vehicles: [] };
                 demand[key].need += n;
                 demand[key].vehicles.push(v.caption);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.33.2
+// @version      0.33.3
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -2893,6 +2893,8 @@
     // Das Dashboard ist eine Werkzeugsammlung: oben die Reiter, darunter das gewählte Werkzeug
     function openDashboard(onlyBuildingId, startTool) {
         addStyles();
+        // Bei jedem Öffnen frisch lesen: neues Personal, neue Wachen und Fahrzeuge ohne die Seite neu zu laden
+        forgetFleet();
         document.querySelectorAll('#lsshelper-dash-backdrop').forEach(node => node.remove());
         const backdrop = dashEl('div');
         backdrop.id = 'lsshelper-dash-backdrop';

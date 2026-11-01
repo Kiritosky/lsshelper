@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.34.0
+// @version      0.34.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1358,7 +1358,7 @@
             create.addEventListener('mousedown', () => {
                 saveCategoryStyles(container);
                 try {
-                    localStorage.setItem(DRAFT_KEY, JSON.stringify({ type, mission }));
+                    localStorage.setItem(DRAFT_KEY, JSON.stringify({ type, mission, t: Date.now() }));
                 } catch (e) {
                     log('Entwurf konnte nicht gespeichert werden', e);
                 }
@@ -1606,23 +1606,47 @@
     }
 
     async function aaoCreate() {
-        const type = new URLSearchParams(location.search).get(AAO_PARAM);
-        const caption = document.querySelector('input[name="aao[caption]"]');
-        if (!type || !caption) return;
-        const form = caption.form;
-        let mission = null;
+        let draft = null;
         try {
-            const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-            if (draft && draft.type === type) mission = draft.mission;
+            draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
         } catch (e) {
             /* kaputter Entwurf */
         }
+        // Einsatztyp aus der Adresse; geht er bei einer Weiterleitung des Spiels verloren, aus dem eben gespeicherten Entwurf
+        const type = new URLSearchParams(location.search).get(AAO_PARAM) || (draft && draft.t && Date.now() - draft.t < 2 * 60 * 1000 ? draft.type : null);
+        if (!type) return;
+        // Das Formular kann verzögert erscheinen: bis zu 10 Sekunden darauf warten
+        const findCaption = () => document.querySelector('input[name="aao[caption]"], input[name$="[caption]"], input#aao_caption');
+        let caption = findCaption();
+        for (let i = 0; !caption && i < 40; i++) {
+            await sleep(250);
+            caption = findCaption();
+        }
+        addStyles();
+        const problem = text => {
+            const box = document.createElement('div');
+            box.id = 'lsshelper-panel';
+            box.className = 'alert alert-danger';
+            box.textContent = `LSS Helper: AAO konnte nicht ausgefüllt werden – ${text}`;
+            (caption && caption.form ? caption.form : document.querySelector('form') || document.body).before(box);
+        };
+        if (!caption || !caption.form) return problem('kein Namensfeld im Formular gefunden (hat das Spiel das Formular geändert?).');
+        try {
+            await fillAaoForm(caption, type, draft && draft.type === type ? draft.mission : null);
+        } catch (e) {
+            console.error('[LSS Helper] aaoCreate', e);
+            problem(`${e.message}. Bitte Screenshot an den Entwickler.`);
+        }
+    }
+
+    async function fillAaoForm(caption, type, draftMission) {
+        const form = caption.form;
+        let mission = draftMission;
         if (!mission) {
             const missions = await getMissions();
             mission = missions[type] || missions[type.split(/[-/]/)[0]];
         }
-        if (!mission) return;
-        addStyles();
+        if (!mission) throw new Error(`Einsatztyp ${type} nicht in den Einsatzdaten`);
         form.addEventListener('submit', () => sessionStorage.setItem(SUBMIT_KEY, '1'));
 
         const setValue = (input, value) => {
@@ -2749,7 +2773,7 @@
                     row.append(
                         dashButton('anlegen', 'lsshelper-btn-quiet', () => {
                             try {
-                                localStorage.setItem(DRAFT_KEY, JSON.stringify({ type: entry.id, mission: entry.mission }));
+                                localStorage.setItem(DRAFT_KEY, JSON.stringify({ type: entry.id, mission: entry.mission, t: Date.now() }));
                             } catch (e) {
                                 log('Entwurf konnte nicht gespeichert werden', e);
                             }
@@ -4530,7 +4554,7 @@
         { name: 'hotkeyRelay', match: /^\/$/, run: hotkeyRelay },
         { name: 'aaoHighlight', match: /^\/missions\/\d+/, run: aaoHighlightLive },
         { name: 'reserveOnClick', match: /^\/missions\/\d+/, run: reserveOnClick },
-        { name: 'aaoCreate', match: /^\/aaos\/new\/?$/, run: aaoCreate },
+        { name: 'aaoCreate', match: /^\/aaos?\/new\/?$/, run: aaoCreate },
         { name: 'dashboardButton', match: /^\/($|buildings\/\d+\/?$)/, run: dashboardButton },
         { name: 'aaoSaved', match: /^\/aaos(\/|$)/, run: aaoSaved },
         { name: 'nextTransport', match: /^\/vehicles\/\d+/, run: nextTransport },

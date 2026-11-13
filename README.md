@@ -37,7 +37,8 @@ Nacht- und Tagansicht, große Karte links, Einsatzliste rechts, Funk, Wachen und
 als Reiter darunter, Schnellsuche nach Einsatz, Wache oder Fahrzeug (Taste `/`).
 Die Seite selbst scrollt nicht mehr, nur die Listen. Ein Klick auf den offenen Reiter
 klappt ihn ein; mit dem Griff `⇕` links neben den Reitern lässt sich die Höhe ziehen
-(Doppelklick setzt sie zurück).
+(Doppelklick setzt sie zurück). Ebenso lässt sich die Trennlinie zwischen Karte und rechter Seite
+nach links ziehen, um Einsatzliste und Reiter breiter zu machen (Doppelklick: automatische Breite).
 Es ändert nur das Aussehen; über den Knopf **Design** oben rechts lässt es sich
 umstellen oder ganz ausschalten.
 

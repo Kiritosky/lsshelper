@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.3.1
+// @version      0.4.0
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -23,10 +23,13 @@
      * ------------------------------------------------------------------ */
 
     const KEY = 'lssd_settings';
-    const DEFAULTS = { on: true, theme: 'night', dock: true, tab: 'radio', dockOpen: true, split: 0.62 };
+    // side: Breite der rechten Seite in Pixeln, null = automatisch (je nach Fensterbreite)
+    const DEFAULTS = { on: true, theme: 'night', dock: true, tab: 'radio', dockOpen: true, split: 0.62, side: null };
     const SPLIT_MIN = 0.25;
     const SPLIT_MAX = 0.85;
-    const OUTERS = ['map_outer', 'missions_outer', 'buildings_outer', 'chat_outer', 'radio_outer', 'lssd-tabs'];
+    const SIDE_MIN = 320; // schmaler wird die Einsatzliste unbrauchbar
+    const MAP_MIN = 440; // Platz links der rechten Seite: mindestens 400 px Karte plus Innenrand und Lücke
+    const OUTERS = ['map_outer', 'missions_outer', 'buildings_outer', 'chat_outer', 'radio_outer', 'lssd-tabs', 'lssd-vgrip'];
     const TABS = [
         { id: 'radio', label: 'Funk', outer: 'radio_outer' },
         { id: 'buildings', label: 'Wachen', outer: 'buildings_outer' },
@@ -354,7 +357,47 @@
   :root.lssd-dock body #row-main-template::after { content: none; display: none; }
   :root.lssd-dock body #row-main-template > * { float: none; width: auto; padding: 0; min-width: 0; min-height: 0; }
   /* Was andere Skripte in die Zeile hängen, kommt in voller Breite darunter (dann darf die Seite wieder scrollen) */
-  :root.lssd-dock body #row-main-template > :not(#map_outer):not(#missions_outer):not(#buildings_outer):not(#chat_outer):not(#radio_outer):not(#lssd-tabs) { grid-column: 1 / -1; }
+  :root.lssd-dock body #row-main-template > :not(#map_outer):not(#missions_outer):not(#buildings_outer):not(#chat_outer):not(#radio_outer):not(#lssd-tabs):not(#lssd-vgrip) { grid-column: 1 / -1; }
+  /* Griff zwischen Karte und rechter Seite: liegt in der Spalten-Lücke, zieht die Breite der rechten Seite */
+  :root.lssd-dock body #row-main-template > #lssd-vgrip {
+    display: block;
+    grid-column: 2;
+    grid-row: 1 / -1;
+    justify-self: start;
+    width: 12px;
+    margin-left: -12px;
+    position: relative;
+    z-index: 5;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  :root.lssd-dock body #lssd-vgrip::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: transparent;
+    transition: background-color 0.15s;
+  }
+  :root.lssd-dock body #lssd-vgrip::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+    border-radius: 3px;
+    background: var(--lssd-line);
+    transition: background-color 0.15s;
+  }
+  :root.lssd-dock body #lssd-vgrip:hover::before, :root.lssd-resizing-x body #lssd-vgrip::before { background: var(--lssd-accent); }
+  :root.lssd-dock body #lssd-vgrip:hover::after, :root.lssd-resizing-x body #lssd-vgrip::after { background: var(--lssd-accent); }
+  :root.lssd-dock body #lssd-vgrip:focus-visible { outline: 2px solid var(--lssd-accent); outline-offset: -2px; border-radius: 4px; }
 
   :root.lssd-dock body #map_outer { grid-area: map; display: flex; flex-direction: column; gap: 6px; }
   :root.lssd-dock body #map_outer > #map { flex: 1 1 auto; height: auto !important; min-height: 0; }
@@ -486,6 +529,8 @@
 }
 :root.lssd-dock-closed #lssd-tabs .lssd-grip { visibility: hidden; }
 :root.lssd-resizing, :root.lssd-resizing * { cursor: row-resize !important; user-select: none !important; }
+:root.lssd-resizing-x, :root.lssd-resizing-x * { cursor: col-resize !important; user-select: none !important; }
+#lssd-vgrip { display: none; }
 .lssd-badge {
   font-family: var(--lssd-mono);
   font-size: 11px;
@@ -866,6 +911,7 @@
         root.classList.toggle('lssd-dock-closed', !settings.dockOpen);
         root.dataset.lssdTab = settings.tab;
         setSplit(settings.split);
+        setSide(settings.side);
         syncBodyDark();
         updateMenu();
         updateTabs();
@@ -889,6 +935,24 @@
         const split = clampSplit(value);
         root.style.setProperty('--lssd-m', `${Math.round(split * 1000) / 10}fr`);
         root.style.setProperty('--lssd-d', `${Math.round((1 - split) * 1000) / 10}fr`);
+    }
+
+    // Breite der rechten Seite (Einsätze und Reiter) als Anteil an der Fensterbreite, damit dieselbe Einstellung
+    // auf großem Monitor und Laptop passt. Die Grenzen stehen im CSS, so bleibt auch nach Verkleinern des Fensters
+    // genug Karte und genug Einsatzliste übrig.
+    function clampSide(value) {
+        const n = Number(value);
+        if (value === null || value === undefined || !Number.isFinite(n) || n <= 0 || n >= 1) return null;
+        return Math.round(n * 1000) / 1000;
+    }
+    function setSide(value) {
+        const side = clampSide(value);
+        if (side === null) root.style.removeProperty('--lssd-side');
+        else root.style.setProperty('--lssd-side', `clamp(${SIDE_MIN}px, ${Math.round(side * 1000) / 10}vw, calc(100vw - ${MAP_MIN}px))`);
+    }
+    function sideFromPx(px) {
+        const w = window.innerWidth || 1;
+        return clampSide(Math.min(w - MAP_MIN, Math.max(SIDE_MIN, px)) / w);
     }
 
     function updateTabs() {
@@ -938,6 +1002,7 @@
             bar.append(btn);
         });
         row.append(bar);
+        row.append(buildSideGrip(row));
         watchExtras(row);
 
         // Zähler: Sprechwünsche im Funk, neue Chatnachrichten, solange der Chat-Reiter nicht offen ist
@@ -1004,6 +1069,65 @@
             if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
             e.preventDefault();
             save({ split: clampSplit(settings.split + (e.key === 'ArrowDown' ? 0.05 : -0.05)), dockOpen: true });
+        });
+        return grip;
+    }
+
+    // Griff zwischen Karte und rechter Seite: nach links ziehen macht Einsatzliste und Reiter breiter,
+    // die Karte entsprechend schmaler. Doppelklick: zurück zur automatischen Breite.
+    function buildSideGrip(row) {
+        const grip = document.createElement('div');
+        grip.id = 'lssd-vgrip';
+        grip.tabIndex = 0;
+        grip.setAttribute('role', 'separator');
+        grip.setAttribute('aria-orientation', 'vertical');
+        grip.setAttribute('aria-label', 'Breite von Karte und Einsatzliste ändern');
+        grip.title = 'Breite ändern (ziehen, Doppelklick: zurücksetzen)';
+        const sideWidth = () => {
+            const side = document.getElementById('missions_outer');
+            return side ? side.getBoundingClientRect().width : SIDE_MIN;
+        };
+        let drag = null;
+        let frame = 0;
+        // Die Karte muss ihre neue Größe kennen, sonst bleiben graue Ränder ohne Kacheln; höchstens einmal je Bild
+        const refreshMap = () => {
+            if (frame) return;
+            frame = requestAnimationFrame(() => {
+                frame = 0;
+                invalidateMap();
+            });
+        };
+        const move = e => {
+            if (!drag || e.pointerId !== drag.id) return;
+            drag.side = sideFromPx(drag.startWidth + drag.startX - e.clientX);
+            setSide(drag.side);
+            refreshMap();
+        };
+        const end = e => {
+            if (!drag || e.pointerId !== drag.id) return;
+            const side = drag.side;
+            drag = null;
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            root.classList.remove('lssd-resizing-x');
+            save({ side });
+        };
+        grip.addEventListener('pointerdown', e => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            drag = { id: e.pointerId, startX: e.clientX, startWidth: sideWidth(), side: settings.side };
+            root.classList.add('lssd-resizing-x');
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', end);
+            window.addEventListener('pointercancel', end);
+        });
+        grip.addEventListener('dblclick', () => save({ side: null }));
+        // Tastatur: Pfeil links macht die rechte Seite breiter, Pfeil rechts schmaler
+        grip.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            save({ side: sideFromPx(sideWidth() + (e.key === 'ArrowLeft' ? 20 : -20)) });
         });
         return grip;
     }

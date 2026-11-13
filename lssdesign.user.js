@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.3.0
+// @version      0.3.1
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -606,6 +606,46 @@
 :root.lssd body [data-transport-request] h4 { margin: 18px 0 8px; }
 :root.lssd body [data-transport-request] h4 + .btn-xs { margin-bottom: 8px; }
 
+/* ---------- LSS-Manager: Fenster, Reiter und Auswahllisten ----------
+   LSSM zeigt manche Seiten in eigenen Fenstern (Modul „Redesign“, z. B. Fahrzeugseite mit Krankenhausliste)
+   und malt sie im Dunkelmodus #505050 mit hellen Trennlinien. Hier nur die Farben, Aufbau bleibt LSSMs Sache. */
+:root.lssd body .vm--modal { background-color: var(--lssd-bg); color: var(--lssd-text); border: 1px solid var(--lssd-line); border-radius: 10px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45); }
+:root.lssd body .vue-tablist { border-bottom-color: var(--lssd-line); gap: 2px; }
+:root.lssd body .vue-tablist .vue-tab {
+  color: var(--lssd-muted);
+  background: transparent;
+  border-color: transparent transparent var(--lssd-line);
+  border-radius: 6px 6px 0 0;
+}
+:root.lssd body .vue-tablist .vue-tab:hover { color: var(--lssd-text); background: var(--lssd-hover); }
+:root.lssd body .vue-tablist .vue-tab[aria-selected="true"] {
+  color: var(--lssd-text);
+  background: var(--lssd-bg);
+  border-color: var(--lssd-line) var(--lssd-line) var(--lssd-bg);
+  box-shadow: inset 0 2px 0 var(--lssd-accent);
+}
+:root.lssd body .vue-tablist .vue-tab[aria-disabled="true"] { color: var(--lssd-muted); opacity: 0.6; }
+/* Tabellen wie auf den Transportseiten des Spiels: Zeilen mittig, Suchfeld so hoch wie die Filterfelder */
+:root.lssd body .redesign-wrapper .table > tbody > tr > td { vertical-align: middle; }
+:root.lssd body .redesign-wrapper .head .search_input_field { height: 34px; }
+:root.lssd body .redesign-wrapper .head { margin-bottom: 12px; }
+:root.lssd body .redesign-wrapper .head .form-group,
+:root.lssd body .redesign-wrapper .head .form-horizontal > label,
+:root.lssd body .redesign-wrapper .head > label { margin-bottom: 0; }
+/* Eingeblendeter Tabellenkopf beim Scrollen (sonst halbdurchsichtiges Grau) */
+:root.lssd body .head.fixed { background: var(--lssd-panel); border: 1px solid var(--lssd-line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+/* Auswahllisten (vue-select), z. B. „Fachabteilung: Ja / Nein“ */
+:root.lssd body .v-select .vs__dropdown-toggle { background: var(--lssd-panel-2); border: 1px solid var(--lssd-line); border-radius: 6px; }
+:root.lssd body .v-select .vs__dropdown-toggle .vs__selected { background: var(--lssd-accent-soft); color: var(--lssd-text); border: 0; border-radius: 4px; padding: 1px 6px; }
+:root.lssd body .v-select input.vs__search, :root.lssd body .v-select input.vs__search:focus {
+  background: transparent; border: 0; box-shadow: none; color: var(--lssd-text);
+}
+:root.lssd body .v-select .vs__deselect, :root.lssd body .v-select .vs__clear, :root.lssd body .v-select .vs__open-indicator { fill: var(--lssd-muted); }
+:root.lssd body .vs__dropdown-menu { background: var(--lssd-panel); border: 1px solid var(--lssd-line); color: var(--lssd-text); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+:root.lssd body .vs__dropdown-menu .vs__dropdown-option { color: var(--lssd-text); }
+:root.lssd body .vs__dropdown-menu .vs__dropdown-option--highlight { background: var(--lssd-btn-blue); color: #fff; }
+:root.lssd body .vs__dropdown-menu .vs__no-options { color: var(--lssd-muted); }
+
 /* ---------- Abstände: mehr Luft zwischen den Elementen ----------
    Steht hinter den übrigen Regeln, damit es bei gleicher Spezifität gewinnt. */
 @media (min-width: 992px) {
@@ -640,7 +680,27 @@
 /* Einsatzliste: Karten mit Abstand und Innenrand */
 :root.lssd body #missions .missionSideBarEntry > .panel { margin-bottom: 10px; }
 :root.lssd body #missions .missionSideBarEntry .panel-heading { padding: 9px 12px 6px 12px; }
-:root.lssd body #missions .missionSideBarEntry .panel-heading .mission-alarm-button { margin-left: 10px; }
+/* Alarm-Knopf: das Wichtigste an der Karte, daher größer und kräftig blau gefüllt.
+   Blau statt Rot, damit er sich nicht mit dem roten/gelben/grünen Statusrand der Karte vermischt. */
+:root.lssd body #missions .missionSideBarEntry .panel-heading .mission-alarm-button {
+  margin-left: 10px;
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  border: 1px solid var(--lssd-btn-blue);
+  background-color: var(--lssd-btn-blue);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+:root.lssd body #missions .missionSideBarEntry .panel-heading .mission-alarm-button:hover,
+:root.lssd body #missions .missionSideBarEntry .panel-heading .mission-alarm-button:focus {
+  background-color: var(--lssd-btn-blue);
+  color: #fff;
+  filter: brightness(1.15);
+}
 :root.lssd body #missions .missionSideBarEntry .panel-heading .map_position_mover small { margin-top: 3px; }
 :root.lssd body #missions .missionSideBarEntry .panel-body { padding: 4px 12px 10px 12px; }
 :root.lssd body #missions .missionSideBarEntry .mission_progress { margin-bottom: 6px; }

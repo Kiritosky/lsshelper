@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.2.2
+// @version      0.2.3
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -66,6 +66,10 @@
   --lssd-red: #d93a3f;
   --lssd-yellow: #e39b12;
   --lssd-green: #2f9e6b;
+  /* Flächen für Knöpfe und Etiketten mit weißer Schrift: dunkel genug für Kontrast 4.5:1 */
+  --lssd-btn-green: #23845a;
+  --lssd-btn-red: #c62f35;
+  --lssd-btn-blue: #2f5fcc;
   --lssd-radius: 8px;
   --lssd-side: clamp(330px, 30vw, 480px);
 }
@@ -75,7 +79,7 @@
   --lssd-panel-2: #f4f7fa;
   --lssd-line: #d4dce6;
   --lssd-text: #1a2532;
-  --lssd-muted: #65758a;
+  --lssd-muted: #5a6a7e;
   --lssd-accent: #2459c9;
   --lssd-accent-soft: #e3ebfb;
   --lssd-bar: #15202c;
@@ -83,6 +87,7 @@
   --lssd-red-soft: #fbe7e7;
   --lssd-yellow-soft: #fdf1d8;
   --lssd-green-soft: #e1f3ea;
+  --lssd-green-text: #1b6b48;
   --lssd-hover: rgba(36, 89, 201, 0.07);
   color-scheme: light;
 }
@@ -100,6 +105,7 @@
   --lssd-red-soft: #3a1d20;
   --lssd-yellow-soft: #3a2c10;
   --lssd-green-soft: #12301f;
+  --lssd-green-text: #7fd8ac;
   --lssd-hover: rgba(111, 152, 242, 0.09);
   color-scheme: dark;
 }
@@ -140,17 +146,23 @@
 
 /* Knöpfe: Spielbedeutung bleibt (grün = los, rot = Gefahr), Formen werden ruhiger.
    AAO-Knöpfe tragen ihre Farbe im style-Attribut und behalten sie. */
-:root.lssd body .btn { border-radius: 6px; font-weight: 500; }
+/* Die Verläufe des Spiels (Bootstrap-Theme, im Dunkelmodus hellgrün) liegen sonst als Bild über der Farbe */
+:root.lssd body .btn { border-radius: 6px; font-weight: 500; background-image: none; text-shadow: none; }
 :root.lssd body .btn-default {
   background: var(--lssd-panel-2);
   border-color: var(--lssd-line);
   color: var(--lssd-text);
 }
 :root.lssd body .btn-default:hover, :root.lssd body .btn-default:focus { background: var(--lssd-accent-soft); border-color: var(--lssd-line); color: var(--lssd-text); }
-:root.lssd body .btn-success { background-color: var(--lssd-green); border-color: var(--lssd-green); color: #fff; }
-:root.lssd body .btn-danger { background-color: var(--lssd-red); border-color: var(--lssd-red); color: #fff; }
+:root.lssd body .btn-success { background-color: var(--lssd-btn-green); border-color: var(--lssd-btn-green); color: #fff; }
+:root.lssd body .btn-danger { background-color: var(--lssd-btn-red); border-color: var(--lssd-btn-red); color: #fff; }
 :root.lssd body .btn-warning { background-color: var(--lssd-yellow); border-color: var(--lssd-yellow); color: #1a1a1a; }
-:root.lssd body .btn-primary, :root.lssd body .btn-info { background-color: var(--lssd-accent); border-color: var(--lssd-accent); color: #fff; }
+:root.lssd body .btn-primary, :root.lssd body .btn-info { background-color: var(--lssd-btn-blue); border-color: var(--lssd-btn-blue); color: #fff; }
+:root.lssd body .label { text-shadow: none; }
+:root.lssd body .label-success { background-color: var(--lssd-btn-green); color: #fff; }
+:root.lssd body .label-danger { background-color: var(--lssd-btn-red); color: #fff; }
+:root.lssd body .label-primary, :root.lssd body .label-info { background-color: var(--lssd-btn-blue); color: #fff; }
+:root.lssd body .label-warning { background-color: var(--lssd-yellow); color: #1a1a1a; }
 :root.lssd body .btn-success:hover, :root.lssd body .btn-danger:hover, :root.lssd body .btn-warning:hover,
 :root.lssd body .btn-primary:hover, :root.lssd body .btn-info:hover { filter: brightness(1.08); }
 :root.lssd body .btn:focus-visible, :root.lssd body a:focus-visible { outline: 2px solid var(--lssd-accent); outline-offset: 2px; }
@@ -165,6 +177,7 @@
   border-radius: 6px;
 }
 :root.lssd body input::placeholder, :root.lssd body textarea::placeholder { color: var(--lssd-muted); }
+:root.lssd body .input-group-addon { background: var(--lssd-panel-2); border-color: var(--lssd-line); color: var(--lssd-muted); }
 :root.lssd body input[type="checkbox"], :root.lssd body input[type="radio"] { accent-color: var(--lssd-accent); }
 
 :root.lssd body .table { color: var(--lssd-text); background: transparent; }
@@ -245,6 +258,14 @@
 :root.lssd-night body .leaflet-tile { opacity: 1; filter: brightness(0.74) contrast(1.06) saturate(0.82); }
 :root.lssd body .leaflet-bar a { background: var(--lssd-panel); color: var(--lssd-text); border-color: var(--lssd-line); }
 :root.lssd body .leaflet-popup-content-wrapper, :root.lssd body .leaflet-popup-tip { background: var(--lssd-panel); color: var(--lssd-text); }
+/* Maßstab und Quellenangabe: im Spiel weiß-durchscheinend, hier in den Farben des Designs */
+:root.lssd body .leaflet-control-attribution { background: color-mix(in srgb, var(--lssd-panel) 85%, transparent); color: var(--lssd-muted); }
+:root.lssd body .leaflet-control-attribution a { color: var(--lssd-text); }
+:root.lssd body .leaflet-control-scale-line {
+  background: color-mix(in srgb, var(--lssd-panel) 85%, transparent);
+  color: var(--lssd-text);
+  border-color: var(--lssd-muted);
+}
 
 /* ---------- Einsatzliste ---------- */
 :root.lssd body .missions-panel-head, :root.lssd body #missions-panel-head { background: var(--lssd-panel); border-bottom: 1px solid var(--lssd-line); }
@@ -291,7 +312,7 @@
   line-height: 18px;
   border-radius: 10px !important;
 }
-:root.lssd body #btn-group-building-select > .btn-success { background: var(--lssd-green-soft); color: var(--lssd-green); border-color: transparent; }
+:root.lssd body #btn-group-building-select > .btn-success { background: var(--lssd-green-soft); color: var(--lssd-green-text) !important; border-color: transparent; }
 :root.lssd body #btn-group-building-select > .btn-danger { background: transparent; color: var(--lssd-muted); border-color: var(--lssd-line); text-decoration: line-through; }
 :root.lssd body #btn-group-building-select > .btn:hover { filter: none; border-color: var(--lssd-muted); }
 
@@ -412,7 +433,11 @@
   line-height: 1;
   color: #fff;
 }
-:root.lssd body #missions-panel-head .label-speedbutton.label-success { background-color: var(--lssd-green); }
+:root.lssd body #missions-panel-head .label-speedbutton.label-success { background-color: var(--lssd-btn-green); }
+/* Zweite Filterzeile: im Dunkelmodus des Spiels ein grauer Balken */
+:root.lssd body #missions-panel-head .mission-filters,
+:root.lssd body #missions-panel-head .mission-filters-row,
+:root.lssd body #missions-panel-head .mission-filters-top { background: transparent; }
 :root.lssd body #missions-panel-head .label-speedbutton.label-warning { background-color: var(--lssd-yellow); color: #1a1a1a; }
 :root.lssd body #missions-panel-head .label-speedbutton .glyphicon { top: 0; font-size: 10px; }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.2.1
+// @version      0.2.2
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -375,6 +375,11 @@
   :root.lssd-dock body #building-list-header-search input { float: none; width: 100%; }
   :root.lssd-dock body #building_panel_body, :root.lssd-dock body #radio_panel_body { padding: 6px 8px; }
   :root.lssd-dock body #chat_panel_body { padding: 8px 10px; }
+  /* LSS-Manager „Gebäudelistenfilter“ mit „Filter immer anzeigen“: legt die Filter absolut über die Liste
+     und hält darunter einen leeren Platzhalter frei. In der Aufteilung scrollen sie mit der Liste mit.
+     relative statt static, weil die LSSM-Suche darin absolut am Filterblock ausgerichtet ist. */
+  :root.lssd-dock body #lssmv4-buildingListFilter-wrapper { position: relative; width: auto; z-index: auto; }
+  :root.lssd-dock body #lssmv4-buildingListFilter-wrapper + div:empty { display: none; }
   /* Die Kennung des Browserfensters am Seitenende würde die Seite um eine Zeile verlängern */
   :root.lssd-dock body > .client-id { display: none; }
 }

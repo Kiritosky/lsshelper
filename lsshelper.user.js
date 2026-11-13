@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.35.0
+// @version      0.35.1
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -2027,20 +2027,28 @@
         }));
         const changes = [];
         stations.filter(s => s.parsed).forEach(station => {
-            const highest = {};
+            // Pro Typbezeichnung: schon richtig benannte Fahrzeuge in ihrer bisherigen Reihenfolge, neue hinten dran
+            const groups = new Map();
+            const add = (label, vehicle, nr) => {
+                if (!groups.has(label)) groups.set(label, []);
+                groups.get(label).push({ vehicle, nr });
+            };
             station.vehicles.forEach(v => {
                 const at = matches(v, station);
-                if (at < 0) return;
-                const label = v.caption.slice(0, at);
-                highest[label] = Math.max(highest[label] || 0, parseInt(v.caption.slice(at + suffixOf(station).length)));
-            });
-            station.vehicles.forEach(v => {
-                if (matches(v, station) > 0) return;
+                if (at > 0) return add(v.caption.slice(0, at), v, parseInt(v.caption.slice(at + suffixOf(station).length)));
                 // Unbenannte Fahrzeuge heißen wie ihr Typ; umgesetzte tragen noch den alten Wachenzusatz
                 const label = v.typeCaption || labels[v.type] || (/\d+\/\d+$/.test(v.caption) ? null : v.caption);
-                if (!label) return;
-                highest[label] = (highest[label] || 0) + 1;
-                changes.push({ kind: 'name', station, vehicle: v, caption: `${label}${suffixOf(station)}${highest[label]}`, text: `„${v.caption}“ → „${label}${suffixOf(station)}${highest[label]}“` });
+                if (label) add(label, v, Infinity);
+            });
+            // Lückenlos durchzählen: nach einem Verkauf (1, 3 übrig) oder Umsetzen rücken die übrigen nach (1, 2)
+            groups.forEach((list, label) => {
+                list.sort((a, b) => a.nr - b.nr || a.vehicle.id - b.vehicle.id);
+                list.forEach(({ vehicle, nr }, i) => {
+                    const caption = `${label}${suffixOf(station)}${i + 1}`;
+                    if (vehicle.caption === caption) return;
+                    const why = nr === Infinity ? '' : ' (Nummer nachgerückt)';
+                    changes.push({ kind: 'name', station, vehicle, caption, text: `„${vehicle.caption}“ → „${caption}“${why}` });
+                });
             });
         });
         return changes;

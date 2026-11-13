@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.2.4
+// @version      0.3.0
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -63,13 +63,13 @@
   --lssd-font: "Barlow", "Segoe UI", system-ui, -apple-system, sans-serif;
   --lssd-display: "Barlow Condensed", "Arial Narrow", "Segoe UI", sans-serif;
   --lssd-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --lssd-red: #d93a3f;
-  --lssd-yellow: #e39b12;
-  --lssd-green: #2f9e6b;
+  --lssd-red: #ef4349;
+  --lssd-yellow: #f5a623;
+  --lssd-green: #22b573;
   /* Flächen für Knöpfe und Etiketten mit weißer Schrift: dunkel genug für Kontrast 4.5:1 */
-  --lssd-btn-green: #23845a;
-  --lssd-btn-red: #c62f35;
-  --lssd-btn-blue: #2f5fcc;
+  --lssd-btn-green: #1b8152;
+  --lssd-btn-red: #d42a32;
+  --lssd-btn-blue: #2a5ee8;
   --lssd-radius: 8px;
   --lssd-side: clamp(360px, 32vw, 500px);
 }
@@ -80,8 +80,8 @@
   --lssd-line: #d4dce6;
   --lssd-text: #1a2532;
   --lssd-muted: #5a6a7e;
-  --lssd-accent: #2459c9;
-  --lssd-accent-soft: #e3ebfb;
+  --lssd-accent: #1f5ae0;
+  --lssd-accent-soft: #e1eafd;
   --lssd-bar: #15202c;
   --lssd-bar-text: #dbe4ee;
   --lssd-red-soft: #fbe7e7;
@@ -92,21 +92,22 @@
   color-scheme: light;
 }
 :root.lssd-night {
-  --lssd-bg: #0e141c;
-  --lssd-panel: #151e29;
-  --lssd-panel-2: #1a2532;
-  --lssd-line: #263445;
-  --lssd-text: #dbe4ee;
-  --lssd-muted: #8899ad;
-  --lssd-accent: #6f98f2;
-  --lssd-accent-soft: #1c2a44;
-  --lssd-bar: #0a0f15;
-  --lssd-bar-text: #cdd7e2;
-  --lssd-red-soft: #3a1d20;
-  --lssd-yellow-soft: #3a2c10;
-  --lssd-green-soft: #12301f;
-  --lssd-green-text: #7fd8ac;
-  --lssd-hover: rgba(111, 152, 242, 0.09);
+  /* Schiefergrau mit Blauton statt fast schwarz: dunkel, aber nicht düster */
+  --lssd-bg: #1a2331;
+  --lssd-panel: #222d3d;
+  --lssd-panel-2: #2a3649;
+  --lssd-line: #3a4a61;
+  --lssd-text: #e8eef5;
+  --lssd-muted: #a8b6c8;
+  --lssd-accent: #82a8ff;
+  --lssd-accent-soft: #283c68;
+  --lssd-bar: #131b26;
+  --lssd-bar-text: #dde5ee;
+  --lssd-red-soft: #552429;
+  --lssd-yellow-soft: #554013;
+  --lssd-green-soft: #1b4630;
+  --lssd-green-text: #8fe6bc;
+  --lssd-hover: rgba(130, 168, 255, 0.13);
   color-scheme: dark;
 }
 
@@ -255,7 +256,7 @@
 
 /* ---------- Karte ---------- */
 :root.lssd body #map { border-radius: var(--lssd-radius); border: 1px solid var(--lssd-line); background: var(--lssd-panel-2); }
-:root.lssd-night body .leaflet-tile { opacity: 1; filter: brightness(0.74) contrast(1.06) saturate(0.82); }
+:root.lssd-night body .leaflet-tile { opacity: 1; filter: brightness(0.86) contrast(1.04) saturate(0.88); }
 :root.lssd body .leaflet-bar a { background: var(--lssd-panel); color: var(--lssd-text); border-color: var(--lssd-line); }
 :root.lssd body .leaflet-popup-content-wrapper, :root.lssd body .leaflet-popup-tip { background: var(--lssd-panel); color: var(--lssd-text); }
 /* Maßstab und Quellenangabe: im Spiel weiß-durchscheinend, hier in den Farben des Designs */
@@ -470,6 +471,8 @@
 }
 #lssd-tabs button:hover { color: var(--lssd-text); }
 #lssd-tabs button[aria-selected="true"] { background: var(--lssd-accent-soft); color: var(--lssd-accent); border-color: transparent; font-weight: 600; }
+/* Nachts eine Spur heller als der Akzent, sonst liegt die Schrift knapp unter 4,5 : 1 */
+:root.lssd-night #lssd-tabs button[aria-selected="true"] { color: #a6c1ff; }
 :root.lssd-dock-closed #lssd-tabs button[aria-selected="true"] { background: var(--lssd-panel); color: var(--lssd-text); border-color: var(--lssd-line); }
 #lssd-tabs button:focus-visible { outline: 2px solid var(--lssd-accent); outline-offset: 2px; }
 #lssd-tabs .lssd-grip {
@@ -537,6 +540,71 @@
   text-transform: uppercase;
   color: var(--lssd-muted);
 }
+
+/* ---------- Reste aus dem Dunkelmodus des Spiels (body.dark) ----------
+   Das Spiel färbt im Dunkelmodus vieles grau (50/80/80) oder knallig. Hier alles in die Designfarben. */
+:root.lssd body tr { background-color: transparent; }
+:root.lssd body .table-striped > tbody > tr:nth-of-type(even) { background-color: transparent; }
+:root.lssd body .table > thead > tr > th { background-color: var(--lssd-panel-2); }
+:root.lssd body tr.success > td, :root.lssd body tr.hospital-boost-active > td { background-color: var(--lssd-green-soft); color: var(--lssd-text); }
+:root.lssd body tr.danger > td { background-color: var(--lssd-red-soft); color: var(--lssd-text); }
+:root.lssd body tr.warning > td { background-color: var(--lssd-yellow-soft); color: var(--lssd-text); }
+:root.lssd body tr.info > td { background-color: var(--lssd-accent-soft); color: var(--lssd-text); }
+:root.lssd body .well, :root.lssd body .breadcrumb { background-color: var(--lssd-panel-2); background-image: none; color: var(--lssd-text); border: 1px solid var(--lssd-line); border-radius: var(--lssd-radius); box-shadow: none; }
+:root.lssd body .well a:not(.btn), :root.lssd body .breadcrumb a { color: var(--lssd-accent); }
+:root.lssd body .breadcrumb > .active, :root.lssd body .breadcrumb > li + li::before { color: var(--lssd-muted); }
+:root.lssd body .well.hospital-boost-active { background-color: var(--lssd-green-soft); border-color: var(--lssd-green); color: var(--lssd-text); }
+:root.lssd body .pagination > li > a, :root.lssd body .pagination > li > span,
+:root.lssd body .pagination a, :root.lssd body .pagination span { background-color: var(--lssd-panel-2); border-color: var(--lssd-line); color: var(--lssd-text); }
+:root.lssd body .pagination a:hover { background-color: var(--lssd-hover); color: var(--lssd-text); }
+:root.lssd body .pagination > .active > a, :root.lssd body .pagination > .active > span { background-color: var(--lssd-btn-blue); border-color: var(--lssd-btn-blue); color: #fff; }
+:root.lssd body .pagination > .disabled > a, :root.lssd body .pagination > .disabled > span { color: var(--lssd-muted); }
+/* Reiterknöpfe (z. B. „Eigene Einsätze / Verbandseinsätze“ auf der Fahrzeugseite) */
+:root.lssd body .nav-pills-heading { background: var(--lssd-panel-2); border: 1px solid var(--lssd-line); border-radius: var(--lssd-radius); padding: 4px; }
+:root.lssd body .nav-pills > li > a { border-radius: 6px; color: var(--lssd-text); background: transparent; }
+:root.lssd body .nav-pills > li > a:hover { background: var(--lssd-hover); }
+:root.lssd body .nav-pills > li.active > a, :root.lssd body .nav-pills > li.active > a:hover,
+:root.lssd body .nav-pills > li.active > a:focus { background: var(--lssd-btn-blue); color: #fff; }
+:root.lssd body .text-success { color: var(--lssd-green-text); }
+:root.lssd body .text-danger { color: var(--lssd-red); }
+:root.lssd body .dropdown-menu a { color: var(--lssd-text); }
+:root.lssd body .mission-speed-dropdown-menu, :root.lssd body .leitstelle-dropdown-menu { background-color: var(--lssd-panel); border: 1px solid var(--lssd-line); }
+:root.lssd body .mission-speed-dropdown-menu li > a, :root.lssd body .leitstelle-dropdown-menu li > a { color: var(--lssd-text); }
+:root.lssd body .mission-speed-dropdown-menu li > a:hover, :root.lssd body .leitstelle-dropdown-menu li > a:hover { background-color: var(--lssd-hover); }
+:root.lssd body .leaflet-container { background-color: var(--lssd-panel-2); }
+:root.lssd body .vehicle_search { border-radius: 4px; }
+:root.lssd body .panel-success .panel-body { background-color: transparent; }
+/* Krankenhausübersicht und Raster-Kacheln */
+:root.lssd body .hospital-overview-desktop-row { background-color: transparent; border-bottom: 1px solid var(--lssd-line); }
+:root.lssd body .hospital-overview-desktop-row:nth-child(2n) { background-color: var(--lssd-panel-2); }
+:root.lssd body th.tablesorter-headerDesc, :root.lssd body th.tablesorter-headerAsc,
+:root.lssd body .hospital-overview-sort-header.tablesorter-headerDesc,
+:root.lssd body .hospital-overview-sort-header.tablesorter-headerAsc { background-color: var(--lssd-accent-soft); }
+:root.lssd body .grid-container .grid-item .grid-item-header { background: var(--lssd-panel-2); border: 1px solid var(--lssd-line); }
+/* Einsatzarten-Karten (Einsatzliste, mögliche Einsätze) */
+:root.lssd body .card .panel-body, :root.lssd body .card #vehicle_assigned,
+:root.lssd body .card .dropdown-menu, :root.lssd body .card .dropdown-menu ul { background: var(--lssd-panel); color: var(--lssd-text); }
+:root.lssd body .card .btn:not(.btn-success):not(.btn-danger),
+:root.lssd body .card .btn-group .dropdown-menu li a { background: var(--lssd-panel-2); color: var(--lssd-text); }
+:root.lssd body #possible_missions_cards .card .panel-body, :root.lssd body #mission_types_sort_by .card .panel-body,
+:root.lssd body #possible_missions_cards .btn, :root.lssd body #mission_types_sort_by .btn {
+  background-image: none !important;
+  background-color: var(--lssd-panel-2);
+  border-color: var(--lssd-line);
+  color: var(--lssd-text);
+}
+:root.lssd body .card .btn.btn-success { background-image: none !important; background-color: var(--lssd-btn-green) !important; }
+
+/* ---------- Transportwahl: Krankenhaus, Übergabeort (Bergwacht, Seenot), Zelle ----------
+   Zeilen mittig ausgerichtet, damit Name und „Anfahren“ auf einer Höhe stehen;
+   die Zeile unter der Maus hebt sich ab, damit klar ist, zu welchem Ziel der Knopf gehört. */
+:root.lssd body [data-transport-request] .table > tbody > tr > td { vertical-align: middle; padding: 8px 10px; }
+:root.lssd body [data-transport-request] .table > thead > tr > th { padding: 8px 10px; }
+:root.lssd body [data-transport-request] .table > tbody > tr > td:first-child { font-weight: 600; }
+:root.lssd body [data-transport-request] .table > tbody > tr:hover { background-color: var(--lssd-hover); }
+:root.lssd body [data-transport-request] .table { margin-bottom: 18px; }
+:root.lssd body [data-transport-request] h4 { margin: 18px 0 8px; }
+:root.lssd body [data-transport-request] h4 + .btn-xs { margin-bottom: 8px; }
 
 /* ---------- Abstände: mehr Luft zwischen den Elementen ----------
    Steht hinter den übrigen Regeln, damit es bei gleicher Spezifität gewinnt. */

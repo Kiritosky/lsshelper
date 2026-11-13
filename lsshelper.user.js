@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.34.1
+// @version      0.35.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -562,15 +562,76 @@
         return !Object.values(VARIANT_MARKS).some(v => v.re.test(extra));
     }
     // Name des Einsatzes für eine neue AAO, mit Zusatz, wenn es einen gleichnamigen Zwilling gibt
-    const variantName = (mission, missions) => (hasVariantTwin(mission, missions) && missionVariant(mission) ? `${mission.n} (${VARIANT_MARKS[missionVariant(mission)].label})` : mission.n);
+    const variantName = (mission, missions) => {
+        if (hasVariantTwin(mission, missions) && missionVariant(mission)) return `${mission.n} (${VARIANT_MARKS[missionVariant(mission)].label})`;
+        // Autobahnpolizei-Einsatz mit gleichnamigem normalen Einsatz (z. B. Massenkarambolage auf Autobahn): "(AP)" anhängen
+        const twin = missions && isHighwayMission(mission) && Object.values(missions).some(m => !isHighwayMission(m) && normalizeTitle(m.n) === normalizeTitle(mission.n));
+        return twin ? `${mission.n} (AP)` : mission.n;
+    };
 
-    function findByName(aaos, names) {
+    // Autobahnpolizei: Einsätze wie "Trunkenheitsfahrt auf Autobahn" brauchen FuStW (AP) statt normaler FuStW,
+    // heißen aber fast wie der normale Polizeieinsatz. AAOs dafür erkennt das Skript an "AP", "BAB",
+    // "Autobahnpolizei" im Namen oder daran, dass sie FuStW (AP) alarmieren.
+    const HIGHWAY_TYPE = 184;
+    const AP_TAG = /(^|[^a-z0-9äöüß])(?:ap|bab|autobahnpolizei)(?![a-z0-9äöüß])/i;
+    const AP_TAG_ALL = new RegExp(AP_TAG.source, 'gi');
+    const AUTOBAHN_ALL = /(?:\bauf\s+(?:der\s+)?)?autobahn(?![a-zäöüß])/gi;
+    const stripHighway = s => (s || '').replace(AP_TAG_ALL, '$1 ').replace(AUTOBAHN_ALL, ' ');
+    const isHighwayMission = m => !!m && ((m.c || []).includes('highway_police') || (m.r && m.r.highway_police > 0));
+
+    function aaoHasType(aao, typeId) {
+        if (aao.specs) return aao.specs.some(s => s.typeId === typeId);
+        try {
+            return parseInt(JSON.parse(aao.getAttribute('vehicle_type_ids') || '{}')[typeId]) > 0;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // 'ap' = ausdrücklich für die Autobahnpolizei, 'autobahn' = nur "Autobahn" im Namen, null = normale AAO
+    function highwayKind(aao) {
+        const text = aao.textContent || '';
+        if (AP_TAG.test(text) || aaoHasType(aao, HIGHWAY_TYPE)) return 'ap';
+        return /autobahn/i.test(text) ? 'autobahn' : null;
+    }
+
+    // Suchdurchgänge, getrennt nach normalem und Autobahn-Einsatz; der erste mit Treffern gilt
+    function namePasses(aaos, names, highway) {
+        const kinds = new Map(aaos.map(a => [a, highwayKind(a)]));
+        const text = a => a.textContent;
+        if (!highway) {
+            // AP-AAOs nie für normale Einsätze; "Autobahn"-AAOs nur, wenn der Einsatz selbst so heißt (z. B. Feuerwehr-Massenkarambolage)
+            const literal = names.some(n => /autobahn/i.test(n || ''));
+            return [{ pool: aaos.filter(a => !kinds.get(a) || (kinds.get(a) === 'autobahn' && literal)), names, text }];
+        }
+        const stripped = names.map(stripHighway);
+        const strippedText = a => stripHighway(a.textContent);
+        return [
+            // 1) AP-AAOs, Namen ohne Autobahn-Zusatz: "Trunkenheitsfahrt (AP)" passt auf "Trunkenheitsfahrt auf Autobahn"
+            { pool: aaos.filter(a => kinds.get(a) === 'ap'), names: stripped, text: strippedText },
+            // 2) AAOs mit "Autobahn" im Namen
+            { pool: aaos.filter(a => kinds.get(a) === 'autobahn'), names: stripped, text: strippedText },
+            // 3) übrige AAOs nur bei echtem Namenstreffer – sonst landet "Trunkenheitsfahrt" über einen Teilstring hier
+            { pool: aaos.filter(a => !kinds.get(a)), names, text, strict: true },
+        ];
+    }
+
+    // highway: Einsatz der Autobahnpolizei; strict: nur Namens- und Kürzeltreffer, keine Teilstrings
+    function findByName(aaos, names, highway = false, strict = false) {
+        for (const pass of namePasses(aaos, names, highway)) {
+            const hits = matchByName(pass.pool, pass.names, pass.text, strict || pass.strict);
+            if (hits.length) return hits;
+        }
+        return [];
+    }
+
+    function matchByName(aaos, names, textOf, strict) {
         const wanted = names.map(normalizeTitle).filter(n => n.length > 2);
         const wantedWords = wanted.map(n => n.split(' '));
         // Wörtliche oder abgekürzte AAO-Namen: nur die besten Treffer
         const scored = aaos
             .map(aao => {
-                const variants = nameVariants(aao.textContent);
+                const variants = nameVariants(textOf(aao));
                 return { aao, score: Math.max(-1, ...wantedWords.map(words => nameScore(variants, words))) };
             })
             .filter(s => s.score >= 0);
@@ -578,8 +639,9 @@
             const top = Math.max(...scored.map(s => s.score));
             return scored.filter(s => s.score === top).map(s => s.aao);
         }
+        if (strict) return [];
         return aaos.filter(a => {
-            const text = normalizeTitle(a.textContent);
+            const text = normalizeTitle(textOf(a));
             return text.length > 3 && wanted.some(n => n.includes(text) || text.includes(n));
         });
     }
@@ -1293,12 +1355,10 @@
 
         // 1) AAO mit dem Namen des Einsatzes (ohne Einsatzdaten, sofort)
         if (settings.markName && !isFollowUp && !dispatched) {
-            let byName = findByName(aaos, [title]);
-            if (byName.length && type) {
-                const all = await getMissions().catch(() => ({}));
-                const own = all[type] || all[type.split(/[-/]/)[0]];
-                byName = byName.filter(a => variantFits(a.textContent, own, all));
-            }
+            const all = type ? await getMissions().catch(() => ({})) : {};
+            const own = type ? all[type] || all[type.split(/[-/]/)[0]] : null;
+            // Autobahn oder nicht: aus den Einsatzdaten, ohne sie nach dem Titel
+            const byName = findByName(aaos, [title], own ? isHighwayMission(own) : /autobahn/i.test(title)).filter(a => variantFits(a.textContent, own, all));
             if (byName.length) return showName(byName);
         }
 
@@ -1335,7 +1395,7 @@
             renderPanel(container, 'LSS Helper: Keine passende AAO und keine Einsatzdaten gefunden.', []);
             return;
         }
-        const byName = findByName(aaos, [title, mission.n]).filter(a => variantFits(a.textContent, mission, missions));
+        const byName = findByName(aaos, [title, mission.n], isHighwayMission(mission)).filter(a => variantFits(a.textContent, mission, missions));
         if (settings.markName && !dispatched && byName.length) return showName(byName);
 
         // 3) Fahrzeuganforderungen des Einsatztyps
@@ -1421,13 +1481,15 @@
         // Grundeinsätze zuerst, damit sie den Maßstab für ihre Varianten setzen
         const entries = Object.entries(missions).sort((a, b) => /^\d+$/.test(b[0]) - /^\d+$/.test(a[0]));
         entries.forEach(([, m]) => {
-            const key = normalize(m.n);
+            // Autobahnpolizei getrennt halten: "Massenkarambolage auf Autobahn" gibt es für Feuerwehr und Autobahnpolizei
+            const highway = isHighwayMission(m);
+            const key = normalize(m.n) + (highway ? '#ap' : '');
             const merged = byName.get(key);
             const access = missionAccess(m, buildings);
             if (!merged) {
                 // Was schon dem Grundeinsatz fehlt (z. B. eine Wasserrettungswache), darf auch den Varianten fehlen
                 baseUnknown[key] = access.unknown.concat(access.unmet.map(u => u.key));
-                byName.set(key, { n: m.n, r: Object.assign({}, m.r), h: Object.assign({}, m.h), p: m.p && m.p.slice(), g: m.g, c: m.c, words: normalizeTitle(m.n).split(' ') });
+                byName.set(key, { n: m.n, r: Object.assign({}, m.r), h: Object.assign({}, m.h), p: m.p && m.p.slice(), g: m.g, c: m.c, words: normalizeTitle(m.n).split(' '), highway, apWords: normalizeTitle(stripHighway(m.n)).split(' ') });
                 return;
             }
             if (access.capped || !access.unknown.concat(access.unmet.map(u => u.key)).every(k => baseUnknown[key].includes(k))) return;
@@ -1441,16 +1503,20 @@
     }
 
     // Ordnet eine AAO über ihren (ggf. abgekürzten) Namen ihren Einsätzen zu; "Arm/Bein" ergibt zwei
-    function missionsForAao(text, byName) {
+    // AP-AAOs ("Trunkenheitsfahrt (AP)") gehören nur zu Einsätzen der Autobahnpolizei und werden ohne den Zusatz verglichen.
+    function missionsForAao(aao, byName) {
         const found = new Set();
         let ambiguous = false;
-        nameVariants(text).forEach(tokens => {
-            const exact = byName.get(tokens.join(' '));
+        const ap = highwayKind(aao) === 'ap';
+        const wordsOf = mission => (ap ? mission.apWords : mission.words);
+        nameVariants(ap ? stripHighway(aao.textContent) : aao.textContent).forEach(tokens => {
+            const exact = !ap && byName.get(tokens.join(' '));
             if (exact) return found.add(exact);
             let top = -1;
             let hits = [];
             byName.forEach(mission => {
-                const score = nameScore([tokens], mission.words);
+                if (ap && !mission.highway) return;
+                const score = nameScore([tokens], wordsOf(mission));
                 if (score > top) {
                     top = score;
                     hits = [mission];
@@ -1460,7 +1526,7 @@
             });
             if (top < 0) return;
             // Gleichnamige Einsätze mit Klammerzusatz zählen als einer
-            if (hits.every(h => h.words.join(' ') === hits[0].words.join(' '))) found.add(hits[0]);
+            if (hits.every(h => wordsOf(h).join(' ') === wordsOf(hits[0]).join(' '))) found.add(hits[0]);
             else ambiguous = true;
         });
         return { missions: Array.from(found), ambiguous };
@@ -2734,19 +2800,19 @@
         await sleep(0);
 
         // Fehlende AAOs: Einsätze, die du bekommen kannst, für die aber keine AAO mit passendem Namen existiert
-        const variants = aaos.map(aao => ({ caption: aao.caption, names: nameVariants(aao.caption) }));
         const seen = new Set();
         const missing = [];
         baseMissions(missions).forEach(([id, mission]) => {
             const key = normalizeTitle(mission.n);
             // Gleichnamige Einsätze mit anderer Variante (z. B. Bergrettung) brauchen eine eigene AAO
-            const seenKey = `${key}|${hasVariantTwin(mission, missions) ? missionVariant(mission) : ''}`;
+            // ebenso Einsätze der Autobahnpolizei und gleichnamige normale Einsätze
+            const highway = isHighwayMission(mission);
+            const seenKey = `${key}|${hasVariantTwin(mission, missions) ? missionVariant(mission) : ''}|${highway ? 'ap' : ''}`;
             if (seen.has(seenKey)) return;
             seen.add(seenKey);
             const access = missionAccess(mission, buildings);
             if (access.capped || access.mainMissing !== null || access.unmet.length) return;
-            const words = key.split(' ');
-            if (variants.some(v => nameScore(v.names, words) >= 0 && variantFits(v.caption, mission, missions))) return;
+            if (findByName(aaos, [mission.n], highway, true).some(a => variantFits(a.caption, mission, missions))) return;
             missing.push({ id, mission, uncertain: access.unknown.length > 0 });
         });
         missing.sort((a, b) => (a.mission.c[0] || '').localeCompare(b.mission.c[0] || '') || a.mission.n.localeCompare(b.mission.n));
@@ -2808,7 +2874,7 @@
                 const stats = { ok: 0, bad: 0, ambiguous: 0, unmatched: 0 };
                 result.textContent = '';
                 aaos.forEach(aao => {
-                    const found = missionsForAao(aao.caption, byName);
+                    const found = missionsForAao(aao, byName);
                     if (!found.missions.length) return found.ambiguous ? stats.ambiguous++ : stats.unmatched++;
                     const problems = found.missions.map(mission => ({ mission, issues: checkAao(aao.caption, aao.specs, mission) })).filter(p => p.issues.length);
                     if (!problems.length) return stats.ok++;

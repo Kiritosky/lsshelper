@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.2.3
+// @version      0.2.4
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -71,7 +71,7 @@
   --lssd-btn-red: #c62f35;
   --lssd-btn-blue: #2f5fcc;
   --lssd-radius: 8px;
-  --lssd-side: clamp(330px, 30vw, 480px);
+  --lssd-side: clamp(360px, 32vw, 500px);
 }
 :root.lssd-day {
   --lssd-bg: #e9eef4;
@@ -537,6 +537,69 @@
   text-transform: uppercase;
   color: var(--lssd-muted);
 }
+
+/* ---------- Abstände: mehr Luft zwischen den Elementen ----------
+   Steht hinter den übrigen Regeln, damit es bei gleicher Spezifität gewinnt. */
+@media (min-width: 992px) {
+  :root.lssd-dock body #row-main-template { gap: 10px 12px; padding: 10px 12px 12px; }
+  :root.lssd-dock body #missions-panel-body { padding: 10px 8px 10px 10px; }
+  :root.lssd-dock body #building_panel_body, :root.lssd-dock body #radio_panel_body { padding: 10px 10px; }
+  :root.lssd-dock body #chat_panel_body { padding: 10px 12px; }
+  :root.lssd-dock body #radio_panel_heading, :root.lssd-dock body #building_panel_heading,
+  :root.lssd-dock body #chat_panel_heading { padding: 8px 10px; }
+  :root.lssd-dock body #building_panel_heading { gap: 8px; }
+  :root.lssd-dock body #building-list-header-buttons { gap: 6px; }
+}
+#lssd-tabs { gap: 6px; }
+#lssd-tabs button { padding: 7px 12px; }
+
+/* Kopf der Einsatzliste: Gruppen sichtbar getrennt, Knöpfe nicht mehr aneinandergeklebt */
+:root.lssd body #missions-panel-head { padding: 10px 12px; gap: 8px; }
+:root.lssd body #missions-panel-head .missions-panel-main { gap: 6px; }
+:root.lssd body #missions-panel-head .mission-filters-block { gap: 8px; }
+:root.lssd body #missions-panel-head .mission-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+:root.lssd body #missions-panel-head .mission-filters-row { flex-wrap: wrap; gap: 10px; }
+:root.lssd body #missions-panel-head .mission-state-filters,
+:root.lssd body #missions-panel-head .mission-participation-filters { gap: 4px; }
+:root.lssd body #missions-panel-head .mission_selection { border-radius: 6px; padding: 1px 5px; margin: 0; }
+:root.lssd body #missions-panel-head .mission_selection img.icon,
+:root.lssd body #missions-panel-head .mission_selection .glyphicon { margin-right: 3px; }
+:root.lssd body #missions-panel-head .label-speedbutton { margin-right: 0; }
+:root.lssd body #missions-panel-head .filters-display-control { margin-left: auto; }
+:root.lssd body #missions-panel-head .mission-sorting { flex: 0 1 150px; min-width: 120px; }
+:root.lssd body #missions-panel-head .mission-sorting select { width: 100%; }
+
+/* Einsatzliste: Karten mit Abstand und Innenrand */
+:root.lssd body #missions .missionSideBarEntry > .panel { margin-bottom: 10px; }
+:root.lssd body #missions .missionSideBarEntry .panel-heading { padding: 9px 12px 6px 12px; }
+:root.lssd body #missions .missionSideBarEntry .panel-heading .mission-alarm-button { margin-left: 10px; }
+:root.lssd body #missions .missionSideBarEntry .panel-heading .map_position_mover small { margin-top: 3px; }
+:root.lssd body #missions .missionSideBarEntry .panel-body { padding: 4px 12px 10px 12px; }
+:root.lssd body #missions .missionSideBarEntry .mission_progress { margin-bottom: 6px; }
+
+/* Funk: Bestandteile einer Meldung mit gleichmäßigem Abstand statt aneinander */
+:root.lssd body #radio_messages_important > li,
+:root.lssd body #radio_messages > li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+:root.lssd body #radio_messages_important > li > *,
+:root.lssd body #radio_messages > li > * { margin: 0; }
+:root.lssd body #radio_messages_important > li { padding: 8px 10px; margin-bottom: 8px; border-radius: 7px; }
+:root.lssd body #radio_messages > li { padding: 7px 2px; }
+
+/* Wachen: Abstand zwischen Wachen, Fahrzeugzeilen etwas höher */
+:root.lssd body .building_list_li { padding: 0 0 10px; margin-bottom: 10px; }
+:root.lssd body .building_list_caption { padding: 6px 10px; margin-bottom: 6px; }
+:root.lssd body .building_list_vehicle_element { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 3px 0 3px 4px; }
+:root.lssd body .building_list_vehicle_element > * { margin: 0; }
+:root.lssd body #btn-group-building-select { gap: 6px; margin-bottom: 12px; }
+
+/* Chat */
+:root.lssd body #mission_chat_messages > li { padding: 7px 0; }
+
+/* Einsatzfenster: Kopf, AAO-Knöpfe und Patienten mit etwas mehr Luft */
+:root.lssd body .mission_header_info { padding: 10px 14px; }
+:root.lssd body #mission-aao-group a.aao { margin: 0 4px 5px 0; }
+:root.lssd body .mission_patient { padding: 8px 10px; margin-bottom: 8px; }
+:root.lssd body #missing_text.alert-missing-vehicles { margin: 10px 0; padding: 10px 14px; }
 
 /* ---------- Eigene Bedienelemente (auch bei ausgeschaltetem Design sichtbar) ---------- */
 #lssd-menu-li { position: relative; }

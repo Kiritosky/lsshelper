@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.2.0
+// @version      0.2.1
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -296,7 +296,7 @@
 :root.lssd body #btn-group-building-select > .btn:hover { filter: none; border-color: var(--lssd-muted); }
 
 /* ---------- Wachen, Funk, Chat ---------- */
-:root.lssd body .building_list_caption { font-weight: 600; }
+:root.lssd body .building_list_caption { font-weight: 600; background: var(--lssd-panel-2); border-radius: 6px; padding: 4px 6px; }
 :root.lssd body .building_list_caption .map_position_mover { color: var(--lssd-text); }
 :root.lssd body .building_list_li { border-bottom: 1px solid var(--lssd-line); padding: 6px 0; }
 :root.lssd body .vehicle_building_list_button.label-default { font-weight: 500; font-size: 12px; }
@@ -384,7 +384,32 @@
 :root.lssd body #missions-panel-head .missions-panel-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 :root.lssd body #missions-panel-head .mission-filters-block { display: grid; gap: 4px; margin: 0; }
 :root.lssd body #missions-panel-head .mission-filters-block > * { margin: 0; }
-:root.lssd body #search_input_field_missions { width: 100%; padding: 3px 8px; height: auto; }
+/* Das Suchfeld trägt die Lupe als Hintergrundbild: Platz links lassen, damit der Text nicht darüber läuft */
+:root.lssd body #search_input_field_missions {
+  width: 100%;
+  height: auto;
+  padding: 3px 8px 3px 26px;
+  background-repeat: no-repeat;
+  background-position: 8px center;
+  background-size: 13px 13px;
+}
+/* Einsatzgeschwindigkeit: im Spiel ein flaches Etikett, hier ein Knopf in Höhe der Filter daneben */
+:root.lssd body #missions-panel-head .missions-panel-main > .dropdown { display: flex; align-items: center; height: auto; }
+:root.lssd body #missions-panel-head .label-speedbutton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+}
+:root.lssd body #missions-panel-head .label-speedbutton.label-success { background-color: var(--lssd-green); }
+:root.lssd body #missions-panel-head .label-speedbutton.label-warning { background-color: var(--lssd-yellow); color: #1a1a1a; }
+:root.lssd body #missions-panel-head .label-speedbutton .glyphicon { top: 0; font-size: 10px; }
 
 /* Listen scrollen für sich, ohne die Seite mitzuziehen; schmale Scrollleisten im Design */
 :root.lssd body #missions-panel-body, :root.lssd body #building_panel_body, :root.lssd body #radio_panel_body,

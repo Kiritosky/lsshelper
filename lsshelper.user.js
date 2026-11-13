@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.35.1
+// @version      0.35.2
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -1913,6 +1913,8 @@
 
     // "Ballrechten FW 1" -> { place: 'Ballrechten', code: 'FW', nr: '1' }; "THW Eschbach GP" -> Eschbach / THW / 1
     function parseStation(caption) {
+        // Zusätze in Klammern am Ende sind eigene Notizen ("Wettelbrunnen FW 1 (Logistik)") und zählen nicht zum Namen
+        caption = caption.replace(/(?:\s*(?:\([^()]*\)|\[[^\]]*\]))+\s*$/, '').trim();
         let match = caption.match(/^(.+) ([A-ZÄÖÜ]{2,4}) (\d+)$/);
         if (match) return { place: match[1], code: match[2], nr: match[3] };
         match = caption.match(/^THW (.+?)(?: GP)?$/);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.1.0
+// @version      0.2.0
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -23,7 +23,10 @@
      * ------------------------------------------------------------------ */
 
     const KEY = 'lssd_settings';
-    const DEFAULTS = { on: true, theme: 'night', dock: true, tab: 'radio' };
+    const DEFAULTS = { on: true, theme: 'night', dock: true, tab: 'radio', dockOpen: true, split: 0.62 };
+    const SPLIT_MIN = 0.25;
+    const SPLIT_MAX = 0.85;
+    const OUTERS = ['map_outer', 'missions_outer', 'buildings_outer', 'chat_outer', 'radio_outer', 'lssd-tabs'];
     const TABS = [
         { id: 'radio', label: 'Funk', outer: 'radio_outer' },
         { id: 'buildings', label: 'Wachen', outer: 'buildings_outer' },
@@ -267,6 +270,30 @@
 :root.lssd body .missionSideBarEntry .mission_progress .progress-bar { border-radius: 4px; }
 :root.lssd body .missionSideBarEntry .mission_overview_countdown { font-family: var(--lssd-mono); font-size: 12px; color: var(--lssd-muted); font-variant-numeric: tabular-nums; }
 :root.lssd body .missionSideBarEntryScrollInvisible { background-color: transparent; }
+/* Freigegebene und Verbandseinsätze: im Spiel ein greller Grünverlauf (Regel mit ID, daher hier auch mit ID),
+   hier nur ein leichter Farbton, damit sie sich von eigenen Einsätzen abheben */
+:root.lssd body #missions .missionSideBarEntry .panel-heading { background: transparent; }
+:root.lssd body #missions .missionSideBarEntry .panel-success { background: color-mix(in srgb, var(--lssd-accent) 9%, var(--lssd-panel)); }
+:root.lssd body .panel-heading { background-image: none; }
+
+/* Graue Flächen des Spiel-Dunkelmodus hinter den Fenstern und um das Einsatzfenster */
+:root.lssd body #missions_outer, :root.lssd body #buildings_outer,
+:root.lssd body #chat_outer, :root.lssd body #radio_outer { background-color: transparent; }
+:root.lssd body #lightbox_box { background-color: var(--lssd-panel); border-color: var(--lssd-line); }
+
+/* Filter der Wachenliste: kleine Schalter statt großer grüner Knöpfe (grün = sichtbar, durchgestrichen = ausgeblendet) */
+:root.lssd body #btn-group-building-select { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; float: none; }
+:root.lssd body #btn-group-building-select > .btn {
+  float: none;
+  margin: 0;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 10px !important;
+}
+:root.lssd body #btn-group-building-select > .btn-success { background: var(--lssd-green-soft); color: var(--lssd-green); border-color: transparent; }
+:root.lssd body #btn-group-building-select > .btn-danger { background: transparent; color: var(--lssd-muted); border-color: var(--lssd-line); text-decoration: line-through; }
+:root.lssd body #btn-group-building-select > .btn:hover { filter: none; border-color: var(--lssd-muted); }
 
 /* ---------- Wachen, Funk, Chat ---------- */
 :root.lssd body .building_list_caption { font-weight: 600; }
@@ -284,22 +311,27 @@
 :root.lssd body #mission_chat_messages > li { border-bottom: 1px solid var(--lssd-line); padding: 4px 0; }
 
 /* ---------- Hauptseite: Karte links, Einsätze rechts, Reiter darunter ---------- */
+/* Die Seite selbst scrollt nicht mehr: das Raster füllt genau das Fenster unter der oberen Leiste,
+   gescrollt wird nur in den Listen, und zwar ohne die Seite mitzuziehen. */
 @media (min-width: 992px) {
+  :root.lssd-dock:not(.lssd-extra), :root.lssd-dock:not(.lssd-extra) body { overflow: hidden; }
+  :root.lssd-dock body > footer, :root.lssd-dock body > #footer_hr { display: none; }
   :root.lssd-dock body #main_container { padding-left: 0; padding-right: 0; }
   :root.lssd-dock body #row-main-template {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--lssd-side);
-    grid-template-rows: minmax(0, 1.45fr) auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, var(--lssd-m, 62fr)) auto minmax(0, var(--lssd-d, 38fr));
     grid-template-areas: "map missions" "map tabs" "map dock";
     gap: 8px 10px;
     margin: 0;
-    padding: 10px;
-    height: calc(100vh - var(--lssd-nav-h, 51px));
+    padding: 8px 10px 10px;
+    height: calc(100vh - var(--lssd-top, 52px));
   }
+  :root.lssd-dock.lssd-dock-closed body #row-main-template { grid-template-rows: minmax(0, 1fr) auto 0; row-gap: 8px; }
   :root.lssd-dock body #row-main-template::before,
   :root.lssd-dock body #row-main-template::after { content: none; display: none; }
   :root.lssd-dock body #row-main-template > * { float: none; width: auto; padding: 0; min-width: 0; min-height: 0; }
-  /* Was andere Skripte in die Zeile hängen, kommt in voller Breite darunter */
+  /* Was andere Skripte in die Zeile hängen, kommt in voller Breite darunter (dann darf die Seite wieder scrollen) */
   :root.lssd-dock body #row-main-template > :not(#map_outer):not(#missions_outer):not(#buildings_outer):not(#chat_outer):not(#radio_outer):not(#lssd-tabs) { grid-column: 1 / -1; }
 
   :root.lssd-dock body #map_outer { grid-area: map; display: flex; flex-direction: column; gap: 6px; }
@@ -310,16 +342,15 @@
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
     background: var(--lssd-panel); border: 1px solid var(--lssd-line); border-radius: var(--lssd-radius); overflow: hidden;
   }
-  :root.lssd-dock body #missions-panel-head { padding: 8px 10px; border-radius: var(--lssd-radius) var(--lssd-radius) 0 0; }
-  :root.lssd-dock body #missions-panel-body { flex: 1 1 auto; height: auto !important; max-height: none !important; min-height: 0; margin: 0; padding: 8px 12px 8px 8px; }
+  :root.lssd-dock body #missions-panel-body { flex: 1 1 auto; height: auto !important; max-height: none !important; min-height: 0; margin: 0; padding: 6px 6px 6px 8px; }
 
   :root.lssd-dock body #lssd-tabs { grid-area: tabs; display: flex; }
   :root.lssd-dock body #buildings_outer,
   :root.lssd-dock body #chat_outer,
   :root.lssd-dock body #radio_outer { grid-area: dock; display: none; flex-direction: column; }
-  :root.lssd-dock[data-lssd-tab="radio"] body #radio_outer,
-  :root.lssd-dock[data-lssd-tab="buildings"] body #buildings_outer,
-  :root.lssd-dock[data-lssd-tab="chat"] body #chat_outer { display: flex; }
+  :root.lssd-dock:not(.lssd-dock-closed)[data-lssd-tab="radio"] body #radio_outer,
+  :root.lssd-dock:not(.lssd-dock-closed)[data-lssd-tab="buildings"] body #buildings_outer,
+  :root.lssd-dock:not(.lssd-dock-closed)[data-lssd-tab="chat"] body #chat_outer { display: flex; }
   :root.lssd-dock body #buildings, :root.lssd-dock body #radio, :root.lssd-dock body #chat_panel,
   :root.lssd-dock body #buildings > .panel, :root.lssd-dock body #radio > .panel {
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin: 0;
@@ -327,11 +358,44 @@
   :root.lssd-dock body #building_panel_body, :root.lssd-dock body #radio_panel_body, :root.lssd-dock body #chat_panel_body {
     flex: 1 1 auto; height: auto !important; max-height: none !important; min-height: 0; overflow-y: auto;
   }
-  :root.lssd-dock body #lssd-tabs ~ * .big_map_window_head { border-radius: 0; }
+  /* Der Reiter nennt schon, was offen ist: die gleichlautende Überschrift im Fenster entfällt */
+  :root.lssd-dock body #building-list-header-title { display: none; }
+  :root.lssd-dock body #radio_panel_heading .flex-grow-1 { font-size: 0; }
+  /* Fensterköpfe flach: Knöpfe und Suche in einer Zeile */
+  :root.lssd-dock body #radio_panel_heading, :root.lssd-dock body #building_panel_heading,
+  :root.lssd-dock body #chat_panel_heading { padding: 6px 8px; }
+  :root.lssd-dock body #chat_panel_heading > .clearfix { display: none; }
+  :root.lssd-dock body #chat_panel_heading { display: flex; justify-content: flex-end; }
+  :root.lssd-dock body #chat_panel_heading > .pull-right { float: none; }
+  :root.lssd-dock body #building_panel_heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  :root.lssd-dock body #building_panel_heading > * { float: none; margin: 0; width: auto; }
+  :root.lssd-dock body #building-list-header-buttons { order: 1; display: flex; gap: 4px; }
+  :root.lssd-dock body #building-list-header-buttons > .btn { float: none; margin: 0; border-radius: 6px; }
+  :root.lssd-dock body #building-list-header-search { order: 2; flex: 1 1 100px; }
+  :root.lssd-dock body #building-list-header-search input { float: none; width: 100%; }
+  :root.lssd-dock body #building_panel_body, :root.lssd-dock body #radio_panel_body { padding: 6px 8px; }
+  :root.lssd-dock body #chat_panel_body { padding: 8px 10px; }
+  /* Die Kennung des Browserfensters am Seitenende würde die Seite um eine Zeile verlängern */
+  :root.lssd-dock body > .client-id { display: none; }
 }
+
+/* Kopf der Einsatzliste kompakter */
+:root.lssd body #missions-panel-head { padding: 6px 8px; display: grid; gap: 4px; }
+:root.lssd body #missions-panel-head .missions-panel-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+:root.lssd body #missions-panel-head .mission-filters-block { display: grid; gap: 4px; margin: 0; }
+:root.lssd body #missions-panel-head .mission-filters-block > * { margin: 0; }
+:root.lssd body #search_input_field_missions { width: 100%; padding: 3px 8px; height: auto; }
+
+/* Listen scrollen für sich, ohne die Seite mitzuziehen; schmale Scrollleisten im Design */
+:root.lssd body #missions-panel-body, :root.lssd body #building_panel_body, :root.lssd body #radio_panel_body,
+:root.lssd body #chat_panel_body, :root.lssd body .dropdown-menu { overscroll-behavior: contain; }
+:root.lssd, :root.lssd body * { scrollbar-width: thin; scrollbar-color: var(--lssd-line) transparent; }
+:root.lssd body *:hover { scrollbar-color: var(--lssd-muted) transparent; }
+
 #lssd-tabs { display: none; }
 #lssd-tabs {
   gap: 4px;
+  align-items: stretch;
   font-family: var(--lssd-font);
 }
 #lssd-tabs button {
@@ -349,8 +413,21 @@
   font-weight: 500;
   cursor: pointer;
 }
+#lssd-tabs button:hover { color: var(--lssd-text); }
 #lssd-tabs button[aria-selected="true"] { background: var(--lssd-accent-soft); color: var(--lssd-accent); border-color: transparent; font-weight: 600; }
+:root.lssd-dock-closed #lssd-tabs button[aria-selected="true"] { background: var(--lssd-panel); color: var(--lssd-text); border-color: var(--lssd-line); }
 #lssd-tabs button:focus-visible { outline: 2px solid var(--lssd-accent); outline-offset: 2px; }
+#lssd-tabs .lssd-grip {
+  flex: 0 0 26px;
+  padding: 0;
+  cursor: row-resize;
+  touch-action: none;
+  color: var(--lssd-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+:root.lssd-dock-closed #lssd-tabs .lssd-grip { visibility: hidden; }
+:root.lssd-resizing, :root.lssd-resizing * { cursor: row-resize !important; user-select: none !important; }
 .lssd-badge {
   font-family: var(--lssd-mono);
   font-size: 11px;
@@ -540,7 +617,9 @@
         root.classList.toggle('lssd-night', settings.on && settings.theme === 'night');
         root.classList.toggle('lssd-day', settings.on && settings.theme !== 'night');
         root.classList.toggle('lssd-dock', settings.on && settings.dock && isMain);
+        root.classList.toggle('lssd-dock-closed', !settings.dockOpen);
         root.dataset.lssdTab = settings.tab;
+        setSplit(settings.split);
         syncBodyDark();
         updateMenu();
         updateTabs();
@@ -552,11 +631,32 @@
      * ------------------------------------------------------------------ */
 
     const unread = { chat: 0 };
+    const chatVisible = () => settings.tab === 'chat' && settings.dockOpen && root.classList.contains('lssd-dock');
+
+    // Aufteilung zwischen Einsatzliste und Reiterfenster (Anteil der Einsatzliste an der Höhe)
+    function clampSplit(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return DEFAULTS.split;
+        return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, n));
+    }
+    function setSplit(value) {
+        const split = clampSplit(value);
+        root.style.setProperty('--lssd-m', `${Math.round(split * 1000) / 10}fr`);
+        root.style.setProperty('--lssd-d', `${Math.round((1 - split) * 1000) / 10}fr`);
+    }
+
     function updateTabs() {
         const bar = document.getElementById('lssd-tabs');
         if (!bar) return;
-        bar.querySelectorAll('button').forEach(btn => btn.setAttribute('aria-selected', String(btn.dataset.tab === settings.tab)));
-        if (settings.tab === 'chat') unread.chat = 0;
+        bar.querySelectorAll('button[data-tab]').forEach(btn => {
+            const selected = btn.dataset.tab === settings.tab;
+            btn.setAttribute('aria-selected', String(selected));
+            btn.setAttribute('aria-expanded', String(selected && settings.dockOpen));
+            btn.title = selected
+                ? (settings.dockOpen ? 'Einklappen' : 'Ausklappen')
+                : '';
+        });
+        if (chatVisible()) unread.chat = 0;
         const radio = document.querySelectorAll('#radio_messages_important > li').length;
         const set = (id, n) => {
             const badge = bar.querySelector(`[data-tab="${id}"] .lssd-badge`);
@@ -573,6 +673,7 @@
         bar.id = 'lssd-tabs';
         bar.setAttribute('role', 'tablist');
         bar.setAttribute('aria-label', 'Funk, Wachen und Chat');
+        bar.append(buildGrip(row));
         TABS.forEach(tab => {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -583,10 +684,15 @@
             const badge = document.createElement('span');
             badge.className = 'lssd-badge';
             btn.append(badge);
-            btn.addEventListener('click', () => save({ tab: tab.id }));
+            // Offener Reiter: ein Klick klappt ihn ein (mehr Platz für die Einsatzliste), noch einer wieder aus
+            btn.addEventListener('click', () => {
+                if (settings.tab === tab.id) save({ dockOpen: !settings.dockOpen });
+                else save({ tab: tab.id, dockOpen: true });
+            });
             bar.append(btn);
         });
         row.append(bar);
+        watchExtras(row);
 
         // Zähler: Sprechwünsche im Funk, neue Chatnachrichten, solange der Chat-Reiter nicht offen ist
         const important = document.getElementById('radio_messages_important');
@@ -594,7 +700,7 @@
         const chat = document.getElementById('mission_chat_messages');
         if (chat) {
             new MutationObserver(records => {
-                if (settings.tab === 'chat' && root.classList.contains('lssd-dock')) return;
+                if (chatVisible()) return;
                 unread.chat += records.reduce((sum, r) => sum + Array.from(r.addedNodes).filter(n => n.nodeType === 1).length, 0);
                 updateTabs();
             }).observe(chat, { childList: true });
@@ -602,16 +708,100 @@
         updateTabs();
     }
 
-    // Höhe der oberen Leiste für die Seitenaufteilung
+    // Griff links neben den Reitern: zieht die Grenze zwischen Einsatzliste und Reiterfenster
+    function buildGrip(row) {
+        const grip = document.createElement('button');
+        grip.type = 'button';
+        grip.className = 'lssd-grip';
+        grip.title = 'Höhe ändern (ziehen, Doppelklick: zurücksetzen)';
+        grip.setAttribute('aria-label', 'Höhe von Einsatzliste und Reitern ändern');
+        grip.textContent = '⇕';
+        let drag = null;
+        const ratioAt = y => {
+            const rect = row.getBoundingClientRect();
+            const style = getComputedStyle(row);
+            const top = rect.top + parseFloat(style.paddingTop);
+            const bottom = rect.bottom - parseFloat(style.paddingBottom);
+            const tabs = grip.parentElement ? grip.parentElement.getBoundingClientRect().height : 0;
+            const free = bottom - top - tabs;
+            if (free <= 0) return settings.split;
+            return clampSplit((y - top - tabs / 2) / free);
+        };
+        // Bewegung und Loslassen am Fenster abhören: der Zeiger verlässt den schmalen Griff beim Ziehen sofort
+        const move = e => {
+            if (!drag || e.pointerId !== drag.id) return;
+            drag.split = ratioAt(e.clientY);
+            setSplit(drag.split);
+        };
+        const end = e => {
+            if (!drag || e.pointerId !== drag.id) return;
+            const split = drag.split;
+            drag = null;
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            root.classList.remove('lssd-resizing');
+            save({ split });
+        };
+        grip.addEventListener('pointerdown', e => {
+            if (e.button !== 0 || !settings.dockOpen) return;
+            e.preventDefault();
+            drag = { id: e.pointerId, split: settings.split };
+            root.classList.add('lssd-resizing');
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', end);
+            window.addEventListener('pointercancel', end);
+        });
+        grip.addEventListener('dblclick', () => save({ split: DEFAULTS.split, dockOpen: true }));
+        // Tastatur: Pfeil hoch/runter verschiebt die Grenze in kleinen Schritten
+        grip.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            save({ split: clampSplit(settings.split + (e.key === 'ArrowDown' ? 0.05 : -0.05)), dockOpen: true });
+        });
+        return grip;
+    }
+
+    // Hängen andere Skripte eigene Blöcke in die Hauptzeile, darf die Seite wieder scrollen,
+    // damit diese Blöcke erreichbar bleiben.
+    function watchExtras(row) {
+        const check = () => {
+            const extra = Array.from(row.children).some(el => !OUTERS.includes(el.id)
+                && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0);
+            root.classList.toggle('lssd-extra', extra);
+        };
+        check();
+        new MutationObserver(check).observe(row, { childList: true });
+    }
+
+    // Höhe der oberen Leiste und Abstand der Hauptzeile vom Seitenanfang für die Seitenaufteilung
     function trackNavbar() {
         const nav = document.getElementById('col_navbar_holder');
-        if (!nav) return;
-        const set = () => root.style.setProperty('--lssd-nav-h', `${Math.ceil(nav.getBoundingClientRect().height)}px`);
+        const row = document.getElementById('row-main-template');
+        let last = '';
+        const set = () => {
+            if (nav) root.style.setProperty('--lssd-nav-h', `${Math.ceil(nav.getBoundingClientRect().height)}px`);
+            if (row) {
+                const top = `${Math.max(0, Math.round(row.getBoundingClientRect().top + window.scrollY))}px`;
+                if (top !== last) {
+                    last = top;
+                    root.style.setProperty('--lssd-top', top);
+                    invalidateMap();
+                }
+            }
+        };
         set();
-        if (window.ResizeObserver) new ResizeObserver(() => {
-            set();
-            invalidateMap();
-        }).observe(nav);
+        window.addEventListener('resize', set);
+        if (window.ResizeObserver) {
+            const ro = new ResizeObserver(set);
+            if (nav) ro.observe(nav);
+            // Alles über der Hauptzeile (Hinweise, Leisten anderer Skripte) verschiebt sie nach unten
+            if (row && row.parentElement) {
+                Array.from(row.parentElement.children).forEach(el => {
+                    if (el !== row) ro.observe(el);
+                });
+            }
+        }
     }
 
     /* ------------------------------------------------------------------ *

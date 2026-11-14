@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.35.2
+// @version      0.36.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -855,6 +855,8 @@
             .lsshelper-transport-best { margin: 6px 0 10px; }
             .lsshelper-transport-btn { display: block; width: 100%; max-width: 520px; padding: 10px 14px; font-size: 16px; font-weight: 600; text-align: left; white-space: normal; border-radius: 8px; }
             .lsshelper-transport-btn small { font-weight: 400; opacity: 0.9; }
+            .lsshelper-transport-block { display: inline-block; margin-top: 5px; font-size: 12px; opacity: 0.75; cursor: pointer; }
+            .lsshelper-transport-block:hover { opacity: 1; }
             #lsshelper-dispatch-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin: -5px -5px 6px; background: #1f2229; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
             #lsshelper-dispatch-bar .lsshelper-dispatch-info { flex: 1; min-width: 160px; font-weight: 700; }
             #lsshelper-dispatch-bar .lsshelper-dispatch-warn { color: #ffb74d; }
@@ -867,6 +869,8 @@
             details[open] > .lsshelper-set-summary { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
             .lsshelper-set-summary small { margin-left: auto; color: var(--muted); }
             .lsshelper-set-intro { padding: 6px 2px 8px; color: var(--muted); }
+            .lsshelper-set-intro .lsshelper-set-title { color: var(--text); }
+            .lsshelper-set-blocked { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--text); }
             #lsshelper-dash label.lsshelper-set-row { display: flex; align-items: center; gap: 12px; margin: 0; padding: 9px 2px; border-bottom: 1px solid var(--line); font-weight: 400; color: var(--text); cursor: pointer; }
             #lsshelper-dash label.lsshelper-set-row:last-of-type { border-bottom: none; }
             .lsshelper-set-text { flex: 1; display: flex; flex-direction: column; }
@@ -2980,6 +2984,7 @@
                 box.append(row);
             });
             if (section.id === 'dispatch') box.append(dispatchDiagnoseButton());
+            if (section.id === 'transport') box.append(transportBlockedList());
             ctx.body.append(box);
         });
         refreshDependencies();
@@ -2994,6 +2999,37 @@
                 ctx.open('settings');
             })
         );
+    }
+
+    // Einstellungen › Sprechwünsche: gesperrte Ziele mit „freigeben“
+    function transportBlockedList() {
+        const wrap = dashEl('div', 'lsshelper-set-intro');
+        const render = () => {
+            wrap.textContent = '';
+            wrap.append(
+                dashEl('div', 'lsshelper-set-title', 'Gesperrte Ziele'),
+                dashEl('small', '', 'Werden nie vorgeschlagen. Sperren über „Nicht mehr vorschlagen“ unter dem Vorschlag beim Sprechwunsch.')
+            );
+            const blocked = readBlocked();
+            const ids = Object.keys(blocked).sort((a, b) => String(blocked[a].name || '').localeCompare(String(blocked[b].name || ''), 'de'));
+            if (!ids.length) return wrap.append(dashEl('div', 'lsshelper-dash-empty', 'Keine gesperrt.'));
+            ids.forEach(id => {
+                const entry = blocked[id] || {};
+                const row = dashEl('div', 'lsshelper-set-blocked');
+                row.append(
+                    dashEl('span', '', `${TRANSPORT_ICONS[entry.kind] || '➜'} ${entry.name || `Gebäude ${id}`}`),
+                    dashButton('freigeben', 'lsshelper-btn-quiet', () => {
+                        const map = readBlocked();
+                        delete map[id];
+                        writeBlocked(map);
+                        render();
+                    })
+                );
+                wrap.append(row);
+            });
+        };
+        render();
+        return wrap;
     }
 
     const readJsonSafe = (key, fallback) => {
@@ -3235,9 +3271,32 @@
     };
     const TRANSPORT_ICONS = { patient: '🏥', prisoner: '🚓', 'patient-intermediate': '🔁', 'prisoner-intermediate': '🔁' };
 
-    // Bestes Ziel: nutzbar, frei, Abgabe im Rahmen; Patienten bevorzugt mit Fachabteilung; dann eigene vor Verband, dann das nächste
+    // Gesperrte Ziele werden nie vorgeschlagen: { "<Gebäude-ID>": { name, kind } }.
+    // Eigener Speicher, damit „Standard wiederherstellen“ in den Einstellungen die Liste nicht löscht.
+    const BLOCKED_KEY = 'lsshelper_transport_blocked';
+    function readBlocked() {
+        const raw = readJsonSafe(BLOCKED_KEY, {});
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    }
+    const writeBlocked = map => localStorage.setItem(BLOCKED_KEY, JSON.stringify(map));
+    // Gebäude-ID eines Ziels: im Manager direkt, auf der Spielseite aus dem Link (/patient/ID bzw. /gefangener/ID)
+    const targetId = t => (t.id !== undefined && t.id !== null ? String(t.id) : (String(t.href || '').match(/\/(?:patient|gefangener)\/(\d+)/) || [])[1] || null);
+    const isBlocked = (t, blocked) => {
+        const id = targetId(t);
+        return !!id && Object.prototype.hasOwnProperty.call(blocked, id);
+    };
+    function blockTarget(kind, t) {
+        const id = targetId(t);
+        if (!id) return;
+        const blocked = readBlocked();
+        blocked[id] = { name: t.name, kind };
+        writeBlocked(blocked);
+    }
+
+    // Bestes Ziel: nicht gesperrt, nutzbar, frei, Abgabe im Rahmen; Patienten bevorzugt mit Fachabteilung; dann eigene vor Verband, dann das nächste
     function pickTransportTarget(kind, targets) {
-        const ok = targets.filter(t => t.usable && (t.list === 'own' || t.tax <= settings.transportMaxTax) && (t.free === null || t.free > 0));
+        const blocked = readBlocked();
+        const ok = targets.filter(t => !isBlocked(t, blocked) && t.usable && (t.list === 'own' || t.tax <= settings.transportMaxTax) && (t.free === null || t.free > 0));
         const order = (a, b) => (settings.transportPreferOwn && a.list !== b.list ? (a.list === 'own' ? -1 : 1) : 0) || a.distance - b.distance;
         if (kind === 'patient') {
             const withDepartment = ok.filter(t => t.department);
@@ -3310,12 +3369,17 @@
         return { kind, targets: targets.filter(Boolean), anchor: request };
     }
 
-    // Großer Knopf mit dem Vorschlag; onChoose führt die Wahl aus
-    function transportBox(kind, best, count, onChoose) {
+    // Großer Knopf mit dem Vorschlag; onChoose führt die Wahl aus, onBlock sperrt das vorgeschlagene Ziel
+    function transportBox(kind, best, targets, onChoose, onBlock) {
         const box = document.createElement('div');
         box.className = 'lsshelper-transport-best';
         if (!best) {
-            box.append(Object.assign(document.createElement('div'), { className: 'alert alert-warning', textContent: count ? 'LSS Helper: Kein passendes Ziel frei (Betten/Zellen, Verbandsabgabe).' : 'LSS Helper: Keine Ziele gefunden.' }));
+            const blocked = readBlocked();
+            const blockedCount = targets.filter(t => isBlocked(t, blocked)).length;
+            const text = !targets.length
+                ? 'LSS Helper: Keine Ziele gefunden.'
+                : `LSS Helper: Kein passendes Ziel frei (Betten/Zellen, Verbandsabgabe${blockedCount ? `, ${blockedCount} gesperrt – freigeben in den Einstellungen unter Sprechwünsche` : ''}).`;
+            box.append(Object.assign(document.createElement('div'), { className: 'alert alert-warning', textContent: text }));
             return box;
         }
         const btn = document.createElement('a');
@@ -3337,6 +3401,19 @@
         });
         box.choose = choose;
         box.append(btn);
+        if (onBlock && targetId(best)) {
+            const block = document.createElement('a');
+            block.href = '#';
+            block.className = 'lsshelper-transport-block';
+            block.textContent = '🚫 Nicht mehr vorschlagen';
+            block.title = `${best.name} sperren – freigeben in den Einstellungen unter Sprechwünsche`;
+            block.addEventListener('click', e => {
+                e.preventDefault();
+                if (busy) return;
+                onBlock(best);
+            });
+            box.append(block);
+        }
         return box;
     }
 
@@ -3346,9 +3423,25 @@
         const found = transportTargetsFromPage();
         if (!found) return;
         addStyles();
-        const best = pickTransportTarget(found.kind, found.targets);
-        const box = transportBox(found.kind, best, found.targets.length, target => (location.href = new URL(target.href, location.origin).pathname));
-        found.anchor.before(box);
+        let box = null;
+        // Nach dem Sperren neu wählen: der Knopf zeigt dann das nächstbeste Ziel
+        const render = () => {
+            const best = pickTransportTarget(found.kind, found.targets);
+            const next = transportBox(
+                found.kind,
+                best,
+                found.targets,
+                target => (location.href = new URL(target.href, location.origin).pathname),
+                target => {
+                    blockTarget(found.kind, target);
+                    render();
+                }
+            );
+            if (box) box.replaceWith(next);
+            else found.anchor.before(next);
+            box = next;
+        };
+        render();
         window.LSSHelper.transportChoose = () => (box.choose ? box.choose() : false);
         document.addEventListener(
             'keydown',
@@ -3394,7 +3487,18 @@
                 if (!targets) return;
                 addStyles();
                 const best = pickTransportTarget(vehicle.transportRequestType, targets);
-                box = transportBox(vehicle.transportRequestType, best, targets.length, target => vm.dispatch(target.id));
+                box = transportBox(
+                    vehicle.transportRequestType,
+                    best,
+                    targets,
+                    target => vm.dispatch(target.id),
+                    target => {
+                        blockTarget(vehicle.transportRequestType, target);
+                        // Kasten weg, dann baut die nächste Suche ihn mit dem nächstbesten Ziel neu
+                        container.querySelectorAll('.lsshelper-transport-best').forEach(old => old.remove());
+                        scan();
+                    }
+                );
                 box.dataset.vehicle = String(vehicle.id);
                 vm.$el.prepend(box);
                 active = box;

@@ -2,8 +2,9 @@
 
 Userscript für das [Leitstellenspiel](https://www.leitstellenspiel.de):
 markiert passende AAOs im Einsatzfenster, legt fehlende AAOs an, prüft vorhandene,
-passt die Fahrzeugbesatzung an das Personal an und leitet nach der
-Krankenhaus-/Zellenwahl automatisch zum nächsten Sprechwunsch weiter.
+passt die Fahrzeugbesatzung an das Personal an, schlägt bei Sprechwünschen das beste
+Krankenhaus, die beste Zelle oder Übergabestelle vor (einzelne Ziele lassen sich sperren)
+und leitet nach der Wahl automatisch zum nächsten Sprechwunsch weiter.
 
 ## Download
 

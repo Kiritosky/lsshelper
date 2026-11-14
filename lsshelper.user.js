@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Helper
 // @namespace    lsshelper
-// @version      0.36.0
+// @version      0.37.0
 // @description  Helfer für das Leitstellenspiel: markiert passende AAOs, legt AAOs an, prüft sie und passt die Fahrzeugbesatzung einer Wache ans Personal an.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -73,7 +73,8 @@
     const SETTINGS_SECTIONS = [
         {
             id: 'dispatch',
-            title: '🚨 Leitstellen-Modus',
+            title: 'Leitstellen-Modus',
+            icon: 'siren',
             intro: 'Start über den Knopf über der Einsatzliste. Öffnet Einsätze und Sprechwünsche nacheinander – jedes Ereignis nur einmal. Alarmiert wird immer nur von dir.',
             items: [
                 ['dispatchBacklog', 'Beim Start offene Einsätze abarbeiten', 'Rote Einsätze und Einsätze mit fehlenden Fahrzeugen'],
@@ -92,7 +93,8 @@
         },
         {
             id: 'check',
-            title: '📋 Tagescheck',
+            title: 'Tagescheck',
+            icon: 'clipboard',
             intro: 'Erster Reiter im Dashboard: zeigt, was gerade Aufmerksamkeit braucht. Jeder Punkt öffnet die passende Seite.',
             items: [
                 ['tcCrew', 'Fahrzeuge ohne genug Personal', 'Weniger zugewiesen als die Mindestbesatzung – rücken nicht aus'],
@@ -108,7 +110,8 @@
         },
         {
             id: 'aao',
-            title: '🎯 AAO-Markierung',
+            title: 'AAO-Markierung',
+            icon: 'target',
             items: [
                 ['hotkey', 'Taste: markierte AAO auswählen', 'Leer lassen = aus'],
                 ['markName', 'AAO mit dem Einsatznamen markieren'],
@@ -124,7 +127,8 @@
         },
         {
             id: 'look',
-            title: '🎨 Darstellung',
+            title: 'Darstellung',
+            icon: 'palette',
             items: [
                 ['pulse', 'Markierung pulsieren lassen'],
                 ['colorName', 'Farbe für Namens-Treffer'],
@@ -133,7 +137,8 @@
         },
         {
             id: 'transport',
-            title: '🏥 Sprechwünsche',
+            title: 'Sprechwünsche',
+            icon: 'hospital',
             items: [
                 ['transportBest', 'Bestes Ziel vorschlagen', 'Krankenhaus, Zelle oder Übergabestelle (Berg/Wasser) als großer Knopf, Taste wie bei der AAO – auch im Fenster vom LSS Manager'],
                 ['transportPreferOwn', 'Eigene Gebäude vorziehen', 'Verbandsgebäude nur, wenn kein eigenes passt', 'transportBest'],
@@ -143,7 +148,8 @@
         },
         {
             id: 'buildings',
-            title: '🏠 Wachen & Dashboard',
+            title: 'Wachen & Dashboard',
+            icon: 'house',
             items: [
                 ['crewButton', 'Dashboard im Profilmenü und auf jeder Wache'],
                 ['buildingPersonnel', 'Personalbedarf auf der Wache', 'Mindest- und Höchstbesatzung aller Fahrzeuge'],
@@ -164,6 +170,66 @@
         }
     } catch (e) {
         /* kaputte Einstellungen -> Standard */
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Kern: Symbole – schlichte Linien-Icons statt Emojis (Formen nach Lucide, ISC-Lizenz).
+     * Sie übernehmen die Schriftfarbe und sehen in hellem und dunklem Design gleich aus.
+     * ------------------------------------------------------------------ */
+
+    const ICONS = {
+        siren: '<path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M5 21h14v-3H5z"/><path d="M12 2v2"/><path d="m4.2 5.2 1.4 1.4"/><path d="m19.8 5.2-1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/>',
+        clipboard: '<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+        target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+        palette: '<circle cx="13.5" cy="6.5" r="1" fill="currentColor"/><circle cx="17.5" cy="10.5" r="1" fill="currentColor"/><circle cx="8.5" cy="7.5" r="1" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z"/>',
+        hospital: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/>',
+        house: '<path d="M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+        lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+        transfer: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
+        arrow: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+        ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+        keyboard: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/>',
+        sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+        moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+        close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+        check: '<path d="M20 6 9 17l-5-5"/>',
+        play: '<path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" fill="currentColor"/>',
+        stop: '<rect width="14" height="14" x="5" y="5" rx="2" fill="currentColor"/>',
+        dot: '<circle cx="12" cy="12" r="4" fill="currentColor"/>',
+        ring: '<circle cx="12" cy="12" r="4"/>',
+    };
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+
+    function icon(name) {
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        [['viewBox', '0 0 24 24'], ['width', '1em'], ['height', '1em'], ['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '2'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true'], ['class', 'lsshelper-icon']].forEach(([k, v]) => svg.setAttribute(k, v));
+        svg.style.cssText = 'display:inline-block;vertical-align:-0.125em;flex:none;';
+        svg.innerHTML = ICONS[name] || '';
+        return svg;
+    }
+
+    // Symbol vor einen Text setzen (ersetzt den bisherigen Inhalt des Elements)
+    function withIcon(el, name, text) {
+        const svg = icon(name);
+        if (text) svg.style.marginRight = '0.4em';
+        el.textContent = '';
+        el.append(svg);
+        if (text) el.append(document.createTextNode(text));
+        return el;
+    }
+
+    // Zeilen mit Kennzeichen am Anfang (✓ erledigt, ✗ fehlt, ● schon da, ○ evtl.) mit Symbol statt Zeichen anzeigen.
+    // Die Texte selbst behalten die Zeichen, darauf filtern andere Stellen.
+    const MARKERS = { '✓': ['check', '#1e8e4a'], '✗': ['close', '#d43f3a'], '●': ['dot', ''], '○': ['ring', ''] };
+    function markerLine(el, text) {
+        const marker = MARKERS[text.charAt(0)];
+        if (!marker) {
+            el.textContent = text;
+            return el;
+        }
+        withIcon(el, marker[0], text.slice(1).trimStart());
+        if (marker[1]) el.firstChild.style.color = marker[1];
+        return el;
     }
 
     /* ------------------------------------------------------------------ *
@@ -864,8 +930,8 @@
             details.lsshelper-set-section { padding-bottom: 4px; }
             .lsshelper-set-summary { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; cursor: pointer; list-style: none; }
             .lsshelper-set-summary::-webkit-details-marker { display: none; }
-            .lsshelper-set-summary::before { content: '▸'; color: var(--muted); transition: transform 0.15s; }
-            details[open] > .lsshelper-set-summary::before { transform: rotate(90deg); }
+            .lsshelper-set-summary::before { content: ''; flex: none; align-self: center; width: 6px; height: 6px; margin: 0 2px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s; }
+            details[open] > .lsshelper-set-summary::before { transform: rotate(45deg); }
             details[open] > .lsshelper-set-summary { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
             .lsshelper-set-summary small { margin-left: auto; color: var(--muted); }
             .lsshelper-set-intro { padding: 6px 2px 8px; color: var(--muted); }
@@ -919,13 +985,13 @@
         items.forEach(text => {
             const item = document.createElement('span');
             item.className = 'lsshelper-item';
-            item.textContent = text;
+            markerLine(item, text);
             panel.append(item);
         });
         if (settings.hotkey && hotkeyChoices.length) {
             const hint = document.createElement('span');
             hint.className = 'lsshelper-item';
-            hint.textContent = `⌨ Taste „${settings.hotkey.toUpperCase()}“ wählt die Markierung aus`;
+            withIcon(hint, 'keyboard', `Taste „${settings.hotkey.toUpperCase()}“ wählt die Markierung aus`);
             panel.append(hint);
         }
     }
@@ -1761,11 +1827,7 @@
         const head = document.createElement('b');
         head.textContent = `LSS Helper: AAO für „${mission.n}“ vorausgefüllt – bitte prüfen und selbst speichern.`;
         panel.append(head);
-        items.forEach(text => {
-            const item = document.createElement('div');
-            item.textContent = text;
-            panel.append(item);
-        });
+        items.forEach(text => panel.append(markerLine(document.createElement('div'), text)));
         form.before(panel);
     }
 
@@ -2311,7 +2373,12 @@
         const card = dashEl('div', 'lsshelper-dash-card');
         card.head = dashEl('div', 'lsshelper-dash-card-head');
         card.head.append(dashEl('span', 'lsshelper-dash-card-title', title));
-        if (count !== undefined) card.head.append(dashEl('span', `lsshelper-dash-count ${countClass || ''}`, String(count)));
+        // '✓' als Zähler heißt „nichts offen“: als Haken-Symbol zeigen
+        if (count === '✓') {
+            const done = withIcon(dashEl('span', `lsshelper-dash-count ${countClass || ''}`), 'check');
+            done.title = 'Nichts offen';
+            card.head.append(done);
+        } else if (count !== undefined) card.head.append(dashEl('span', `lsshelper-dash-count ${countClass || ''}`, String(count)));
         else card.head.append(dashEl('span', 'lsshelper-dash-spacer'));
         card.append(card.head);
         parent.append(card);
@@ -2918,7 +2985,7 @@
         const save = () => {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
             counters.forEach(update => update());
-            ctx.status('✓ Gespeichert – gilt ab dem nächsten geöffneten Fenster.');
+            ctx.status('Gespeichert – gilt ab dem nächsten geöffneten Fenster.');
         };
         const rowsByKey = {};
         const refreshDependencies = () =>
@@ -2971,7 +3038,7 @@
             const updateCount = () => (count.textContent = switches.length ? `${switches.filter(key => settings[key]).length} von ${switches.length} an` : '');
             updateCount();
             counters.push(updateCount);
-            summary.append(dashEl('span', 'lsshelper-dash-card-title', section.title), count);
+            summary.append(section.icon ? withIcon(dashEl('span', 'lsshelper-dash-card-title'), section.icon, section.title) : dashEl('span', 'lsshelper-dash-card-title', section.title), count);
             box.append(summary);
             if (section.intro) box.append(dashEl('div', 'lsshelper-set-intro', section.intro));
             section.items.forEach(([key, title, hint]) => {
@@ -3017,7 +3084,7 @@
                 const entry = blocked[id] || {};
                 const row = dashEl('div', 'lsshelper-set-blocked');
                 row.append(
-                    dashEl('span', '', `${TRANSPORT_ICONS[entry.kind] || '➜'} ${entry.name || `Gebäude ${id}`}`),
+                    withIcon(dashEl('span'), TRANSPORT_ICONS[entry.kind] || 'arrow', entry.name || `Gebäude ${id}`),
                     dashButton('freigeben', 'lsshelper-btn-quiet', () => {
                         const map = readBlocked();
                         delete map[id];
@@ -3078,14 +3145,17 @@
             const saved = localStorage.getItem(THEME_KEY);
             const dark = saved ? saved === 'dark' : autoDark;
             dash.classList.toggle('lsshelper-dark', dark);
-            theme.textContent = dark ? '☀ Hell' : '☾ Dunkel';
+            withIcon(theme, dark ? 'sun' : 'moon', dark ? 'Hell' : 'Dunkel');
         };
         applyTheme();
 
         const head = dashEl('div', 'lsshelper-dash-head');
         const title = dashEl('div', 'lsshelper-dash-title', 'LSS Helper');
         title.append(dashEl('small', '', onlyBuildingId ? 'Werkzeuge · Wachen-Werkzeug nur für diese Wache' : 'Werkzeuge für Wachen, Ausbau und AAO'));
-        head.append(title, theme, dashButton('✕', '', closeDash));
+        const close = withIcon(dashButton('', '', closeDash), 'close');
+        close.title = 'Schließen';
+        close.setAttribute('aria-label', 'Schließen');
+        head.append(title, theme, close);
         const tabs = dashEl('div', 'lsshelper-dash-tabs');
         const status = dashEl('div', 'lsshelper-dash-status');
         const body = dashEl('div', 'lsshelper-dash-body');
@@ -3269,7 +3339,8 @@
         const match = String(text || '').replace(',', '.').match(/(\d+(?:\.\d+)?)\s*(?:km|miles|mi)?/);
         return match ? parseFloat(match[1]) : 999;
     };
-    const TRANSPORT_ICONS = { patient: '🏥', prisoner: '🚓', 'patient-intermediate': '🔁', 'prisoner-intermediate': '🔁' };
+    // Symbol je Art des Ziels: Krankenhaus, Zelle, Übergabestelle
+    const TRANSPORT_ICONS = { patient: 'hospital', prisoner: 'lock', 'patient-intermediate': 'transfer', 'prisoner-intermediate': 'transfer' };
 
     // Gesperrte Ziele werden nie vorgeschlagen: { "<Gebäude-ID>": { name, kind } }.
     // Eigener Speicher, damit „Standard wiederherstellen“ in den Einstellungen die Liste nicht löscht.
@@ -3385,7 +3456,7 @@
         const btn = document.createElement('a');
         btn.href = '#';
         btn.className = 'btn btn-success lsshelper-transport-btn';
-        btn.textContent = `${TRANSPORT_ICONS[kind] || '➜'} ${best.name}`;
+        withIcon(btn, TRANSPORT_ICONS[kind] || 'arrow', best.name);
         btn.append(document.createElement('br'), Object.assign(document.createElement('small'), { textContent: `${describeTarget(kind, best)}${settings.hotkey ? ` · Taste ${settings.hotkey.toUpperCase()}` : ''}` }));
         let busy = false;
         const choose = () => {
@@ -3405,7 +3476,7 @@
             const block = document.createElement('a');
             block.href = '#';
             block.className = 'lsshelper-transport-block';
-            block.textContent = '🚫 Nicht mehr vorschlagen';
+            withIcon(block, 'ban', 'Nicht mehr vorschlagen');
             block.title = `${best.name} sperren – freigeben in den Einstellungen unter Sprechwünsche`;
             block.addEventListener('click', e => {
                 e.preventDefault();
@@ -3838,7 +3909,7 @@
             button.className = `btn btn-xs ${mode.active ? 'btn-danger' : 'btn-success'}`;
             const waiting = Object.keys(mode.waiting).length;
             const extra = [mode.queue.length ? `${mode.queue.length} offen` : '', waiting ? `${waiting} warten auf Fahrzeuge` : ''].filter(Boolean).join(', ');
-            button.textContent = mode.active ? `■ Leitstellen-Modus stoppen${extra ? ` (${extra})` : ''}` : '▶ Leitstellen-Modus';
+            withIcon(button, mode.active ? 'stop' : 'play', mode.active ? `Leitstellen-Modus stoppen${extra ? ` (${extra})` : ''}` : 'Leitstellen-Modus');
             details.style.display = mode.active || mode.log.length ? '' : 'none';
             renderPanel();
         };
@@ -3871,7 +3942,7 @@
             log.textContent = mode.log.join('\n') || '–';
             const copy = link('Protokoll kopieren', () => {
                 const text = mode.log.join('\n');
-                if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => (copy.textContent = 'Kopiert ✓'), () => prompt('Protokoll:', text));
+                if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => (copy.textContent = 'Kopiert'), () => prompt('Protokoll:', text));
                 else prompt('Protokoll:', text);
             });
             panelBody.append(Object.assign(document.createElement('b'), { textContent: 'Protokoll ' }), copy, log);
@@ -3932,7 +4003,7 @@
                 return render();
             }
             mode.waiting[id] = { types: new Set(unmet.flatMap(u => u.types)), labels: unmet.map(u => u.label) };
-            note(`⏳ ${nameOf(id)} wartet auf ${mode.waiting[id].labels.join(', ')}`);
+            note(`${nameOf(id)} wartet auf ${mode.waiting[id].labels.join(', ')}`);
             render();
         };
         // Aus der Übersicht angetippt: sofort öffnen
@@ -4309,18 +4380,19 @@
         info.className = 'lsshelper-dispatch-info';
         const update = () => {
             const waiting = Object.keys(mode.waiting || {}).length;
-            info.textContent = `🚨 Leitstellen-Modus · ${mode.count()} offen${waiting ? ` · ${waiting} warten auf Fahrzeuge` : ''}`;
+            withIcon(info, 'siren', `Leitstellen-Modus · ${mode.count()} offen${waiting ? ` · ${waiting} warten auf Fahrzeuge` : ''}`);
         };
         update();
         setInterval(update, 2000);
         bar.append(info);
         const key = k => (k ? ` (${k.toUpperCase()})` : '');
         if (settings.dispatchButtons) {
-            const add = (text, cls, onTap) => {
+            const add = (text, cls, onTap, iconName) => {
                 const btn = document.createElement('a');
                 btn.href = '#';
                 btn.className = `btn btn-sm ${cls}`;
-                btn.textContent = text;
+                if (iconName) withIcon(btn, iconName, text);
+                else btn.textContent = text;
                 btn.addEventListener('click', e => {
                     e.preventDefault();
                     onTap();
@@ -4331,7 +4403,9 @@
             if (isMission) add(`${settings.dispatchShareOnAlarm ? 'Alarm + Verband' : 'Alarm'} & weiter${key(settings.dispatchKeyNext)}`, 'btn-success', alarmNext);
             if (isMission) add(`Verband & weiter${key(settings.dispatchKeyShare)}`, 'btn-primary', shareNext);
             add(`Überspringen${key(settings.dispatchKeySkip)}`, 'btn-default', skip);
-            add('■', 'btn-danger', stop);
+            add('', 'btn-danger', stop, 'stop');
+            bar.lastChild.title = 'Leitstellen-Modus stoppen';
+            bar.lastChild.setAttribute('aria-label', 'Leitstellen-Modus stoppen');
         }
         document.body.prepend(bar);
 
@@ -4472,7 +4546,7 @@
                 if (example) lines.push(`Beispiel-Klassen: ${(example.querySelector('[class*="panel"]') || example).className}`);
                 const mode = shared.dispatch;
                 lines.push(`Modus: ${mode && mode.active ? `aktiv, ${mode.queue.length} offen` : 'aus'}`);
-                if (mode && mode.waiting) Object.entries(mode.waiting).forEach(([id, wait]) => lines.push(`⏳ Einsatz ${id} wartet auf ${wait.labels.join(', ')}`));
+                if (mode && mode.waiting) Object.entries(mode.waiting).forEach(([id, wait]) => lines.push(`Einsatz ${id} wartet auf ${wait.labels.join(', ')}`));
                 if (mode && mode.log.length) lines.push('Letzte Ereignisse:', ...mode.log.slice(0, 15));
                 out.textContent = lines.join('\n');
                 out.hidden = false;
@@ -4602,7 +4676,7 @@
                     const training = plan.changes.filter(c => c.kind === 'training');
                     body.remove();
                     btn.remove();
-                    if (!training.length) card.append(dashEl('div', 'lsshelper-dash-empty', '✓ Alle Wachen haben genug ausgebildetes Personal.'));
+                    if (!training.length) card.append(markerLine(dashEl('div', 'lsshelper-dash-empty'), '✓ Alle Wachen haben genug ausgebildetes Personal.'));
                     training.forEach(c => card.append(open(c.station.building.caption, `/buildings/${c.station.building.id}`, c.text)));
                     ctx.status(`${training.length} Wachen brauchen Lehrgänge.`);
                 })
@@ -4611,7 +4685,7 @@
 
         if (ok.length) {
             const card = dashCard(ctx.body, 'In Ordnung', ok.length, 'lsshelper-dash-count-ok');
-            ok.forEach(title => card.append(dashEl('div', 'lsshelper-dash-empty', `✓ ${title}: nichts zu tun`)));
+            ok.forEach(title => card.append(markerLine(dashEl('div', 'lsshelper-dash-empty'), `✓ ${title}: nichts zu tun`)));
         }
         ctx.body.append(
             dashButton('Neu prüfen', 'lsshelper-btn-quiet', () => {
@@ -4696,7 +4770,7 @@
             if (items.length) cards.push({ building, items });
         }
         if (!cards.length) {
-            ctx.body.append(dashEl('div', 'lsshelper-dash-empty', '✓ Alles ausgebildete Personal sitzt auf passenden Fahrzeugen.'));
+            ctx.body.append(markerLine(dashEl('div', 'lsshelper-dash-empty'), '✓ Alles ausgebildete Personal sitzt auf passenden Fahrzeugen.'));
             ctx.status(`${stations.length} Wachen geprüft.`);
             return;
         }

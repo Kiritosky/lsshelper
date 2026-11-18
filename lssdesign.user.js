@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LSS Design
 // @namespace    lsshelper
-// @version      0.4.0
+// @version      0.4.1
 // @description  Neues Aussehen fürs Leitstellenspiel: Nacht- und Tagansicht, große Karte, Einsatzliste rechts, Funk, Wachen und Chat als Reiter, Schnellsuche. Ändert nur das Aussehen, nicht die Seite.
 // @match        https://www.leitstellenspiel.de/*
 // @match        https://polizei.leitstellenspiel.de/*
@@ -625,6 +625,12 @@
 :root.lssd body th.tablesorter-headerDesc, :root.lssd body th.tablesorter-headerAsc,
 :root.lssd body .hospital-overview-sort-header.tablesorter-headerDesc,
 :root.lssd body .hospital-overview-sort-header.tablesorter-headerAsc { background-color: var(--lssd-accent-soft); }
+:root.lssd body .hospital-overview-virtual-table-header { border-bottom-color: var(--lssd-line); }
+:root.lssd body .hospital-overview-footer {
+  background: var(--lssd-panel-2);
+  border-top: 1px solid var(--lssd-line);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.18);
+}
 :root.lssd body .grid-container .grid-item .grid-item-header { background: var(--lssd-panel-2); border: 1px solid var(--lssd-line); }
 /* Einsatzarten-Karten (Einsatzliste, mögliche Einsätze) */
 :root.lssd body .card .panel-body, :root.lssd body .card #vehicle_assigned,
